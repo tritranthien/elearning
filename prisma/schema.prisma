@@ -1,0 +1,66 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  progress     UserProgress[]
+}
+
+model Topic {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+  slug        String   @unique
+  description String?
+  level       String
+  image       String?
+  color       String?  // for UI gradient (e.g. "from-blue-500 to-cyan-500")
+  createdAt   DateTime @default(now())
+  
+  words       Word[]
+}
+
+model Word {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  term        String
+  definition  String
+  example     String
+  phonetic    String?
+  type        String?  // noun, verb, adj
+  
+  topicId     String   @db.ObjectId
+  topic       Topic    @relation(fields: [topicId], references: [id])
+  
+  progress    UserProgress[]
+}
+
+model UserProgress {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String    @db.ObjectId
+  wordId       String    @db.ObjectId
+  
+  status       String    @default("new") // new, learning, mastered
+  nextReviewAt DateTime?
+  lastReviewedAt DateTime?
+  streak       Int       @default(0)
+  
+  user         User      @relation(fields: [userId], references: [id])
+  word         Word      @relation(fields: [wordId], references: [id])
+
+  @@unique([userId, wordId])
+}
