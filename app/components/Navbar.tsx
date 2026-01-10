@@ -22,14 +22,14 @@ export function Navbar({ user }: NavbarProps) {
                 {/* Navigation */}
                 <div className="flex items-center gap-8">
                     <div className="hidden md:flex gap-6">
-                        <NavLink to="/topics" className={({ isActive }) => `text-[0.95rem] font-medium transition-colors hover:text-primary ${isActive ? "text-primary" : "text-gray-500"}`}>
-                            Word Packs
+                        <NavLink to="/topics" className={({ isActive }) => `text-[0.95rem] font-bold transition-colors hover:text-primary ${isActive ? "text-primary" : "text-gray-500"}`}>
+                            Bộ từ vựng
                         </NavLink>
-                        <NavLink to="/review" className={({ isActive }) => `text-[0.95rem] font-medium transition-colors hover:text-primary ${isActive ? "text-primary" : "text-gray-500"}`}>
-                            Review
+                        <NavLink to="/review" className={({ isActive }) => `text-[0.95rem] font-bold transition-colors hover:text-primary ${isActive ? "text-primary" : "text-gray-500"}`}>
+                            Ôn tập
                         </NavLink>
-                        <NavLink to="/leaderboard" className={({ isActive }) => `text-[0.95rem] font-medium transition-colors hover:text-primary ${isActive ? "text-primary" : "text-gray-500"}`}>
-                            Leaderboard
+                        <NavLink to="/leaderboard" className={({ isActive }) => `text-[0.95rem] font-bold transition-colors hover:text-primary ${isActive ? "text-primary" : "text-gray-500"}`}>
+                            Bảng xếp hạng
                         </NavLink>
                     </div>
 
@@ -37,22 +37,22 @@ export function Navbar({ user }: NavbarProps) {
                         {user ? (
                             <div className="flex items-center gap-4">
                                 <div className="hidden sm:block text-right">
-                                    <div className="text-sm font-bold text-gray-900">{user.firstName} {user.lastName}</div>
+                                    <div className="text-sm font-black text-gray-900">{user.firstName} {user.lastName}</div>
                                     <div className="text-xs text-gray-500">{user.email}</div>
                                 </div>
                                 <Form action="/logout" method="post">
-                                    <button type="submit" className="px-5 py-2 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition-colors">
-                                        Log out
+                                    <button type="submit" className="px-5 py-2 rounded-xl border border-gray-200 text-gray-700 font-bold hover:bg-gray-50 transition-colors">
+                                        Đăng xuất
                                     </button>
                                 </Form>
                             </div>
                         ) : (
                             <>
-                                <Link to="/login" className="px-5 py-2 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:border-primary hover:text-primary transition-colors">
-                                    Log in
+                                <Link to="/login" className="px-5 py-2 rounded-xl border border-gray-200 text-gray-700 font-bold hover:border-primary hover:text-primary transition-colors">
+                                    Đăng nhập
                                 </Link>
-                                <Link to="/register" className="px-5 py-2 rounded-xl bg-primary text-white font-semibold shadow-sm hover:bg-primary-dark hover:-translate-y-px hover:shadow-glow transition-all">
-                                    Start Learning
+                                <Link to="/register" className="px-5 py-2 rounded-xl bg-primary text-white font-bold shadow-sm hover:bg-primary-dark hover:-translate-y-px hover:shadow-glow transition-all">
+                                    Học ngay
                                 </Link>
                             </>
                         )}

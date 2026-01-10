@@ -3,8 +3,8 @@ import type { Route } from "./+types/home";
 
 export function meta({ }: Route.MetaArgs) {
   return [
-    { title: "LinguaFast - Master English" },
-    { name: "description", content: "The fastest way to learn English fluency." },
+    { title: "LinguaFast - Làm chủ tiếng Anh nhanh chóng" },
+    { name: "description", content: "Cách nhanh nhất để học từ vựng tiếng Anh trôi chảy." },
   ];
 }
 
@@ -18,37 +18,34 @@ export default function Home() {
         <div className="container mx-auto px-4">
           <div className="max-w-[800px] mx-auto">
             <div className="inline-block px-4 py-1 mb-6 rounded-full bg-primary-light text-primary font-semibold text-sm">
-              🚀 Science-Based Vocabulary Learning
+              🚀 Học từ vựng dựa trên khoa học não bộ
             </div>
 
-            <h1 className="text-5xl md:text-6xl font-bold leading-tight tracking-tight text-gray-900 mb-6">
-              Master 1000+ Words in <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-br from-primary to-accent">
-                30 Days
-              </span>
+            <h1 className="text-5xl md:text-6xl font-black leading-tight tracking-tight text-gray-900 mb-6">
+              Làm chủ 1000+ từ vựng <br />
+              chỉ trong <span className="text-transparent bg-clip-text bg-gradient-to-br from-primary to-accent">30 Ngày</span>
             </h1>
 
             <p className="text-xl text-gray-500 mb-10 leading-relaxed max-w-2xl mx-auto">
-              Forget boring lists. Learn English vocabulary through interactive flashcards, spaced repetition, and real-world context.
+              Quên đi các danh sách từ vựng khô khan. Học tiếng Anh qua flashcard tương tác, lặp lại ngắt quãng và ngữ cảnh thực tế.
             </p>
 
             <div className="flex gap-4 justify-center">
-              <Link to={user ? "/topics" : "/register"} className="px-8 py-4 rounded-xl bg-primary text-white text-lg font-semibold shadow-sm hover:bg-primary-dark hover:-translate-y-px hover:shadow-glow transition-all">
-                {user ? "Continue Learning" : "Start Memorizing"}
+              <Link to={user ? "/topics" : "/register"} className="px-8 py-4 rounded-xl bg-primary text-white text-lg font-bold shadow-sm hover:bg-primary-dark hover:-translate-y-px hover:shadow-glow transition-all">
+                {user ? "Tiếp tục học" : "Bắt đầu ngay"}
               </Link>
-              <Link to="/topics" className="px-8 py-4 rounded-xl border border-gray-200 bg-white text-gray-700 text-lg font-semibold hover:border-primary hover:text-primary transition-colors">
-                Browse Packs
+              <Link to="/topics" className="px-8 py-4 rounded-xl border border-gray-200 bg-white text-gray-700 text-lg font-bold hover:border-primary hover:text-primary transition-colors">
+                Khám phá kho từ
               </Link>
             </div>
 
             <div className="mt-16 opacity-80">
-              <p className="text-sm text-gray-500 mb-4 font-medium uppercase tracking-wider">Proven effective by learners from</p>
+              <p className="text-sm text-gray-500 mb-4 font-bold uppercase tracking-widest">Được tin dùng bởi học viên từ</p>
               <div className="flex justify-center gap-12 grayscale opacity-60">
-                {/* Placeholders for logos */}
-                <span className="font-bold text-xl">HARVARD</span>
-                <span className="font-bold text-xl">DUOLINGO</span>
-                <span className="font-bold text-xl">BABBEL</span>
-                <span className="font-bold text-xl">MEMRISE</span>
+                <span className="font-bold text-xl tracking-tighter">HARVARD</span>
+                <span className="font-bold text-xl tracking-tighter">DUOLINGO</span>
+                <span className="font-bold text-xl tracking-tighter">BABBEL</span>
+                <span className="font-bold text-xl tracking-tighter">MEMRISE</span>
               </div>
             </div>
           </div>
@@ -59,27 +56,27 @@ export default function Home() {
       <section className="py-24 bg-white">
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-gray-900">Why LinguaFast works</h2>
-            <p className="text-gray-500 max-w-2xl mx-auto text-lg">
-              We use cognitive science to ensure you never forget what you learn.
+            <h2 className="text-4xl font-black mb-4 text-gray-900">Tại sao LinguaFast hiệu quả?</h2>
+            <p className="text-gray-500 max-w-2xl mx-auto text-lg font-medium">
+              Chúng tôi sử dụng khoa học nhận thức để đảm bảo bạn không bao giờ quên những gì đã học.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <FeatureCard
               icon="🧠"
-              title="Spaced Repetition"
-              desc="Our algorithm knows exactly when you're about to forget a word and brings it back for review."
+              title="Lặp lại ngắt quãng"
+              desc="Thuật toán Spaced Repetition biết chính xác khi nào bạn sắp quên và nhắc bạn ôn tập đúng lúc."
             />
             <FeatureCard
               icon="⚡"
-              title="Smart Flashcards"
-              desc="Rich media cards with audio, images, and example sentences to create strong memory associations."
+              title="Flashcard Thông minh"
+              desc="Thẻ học phong phú với âm thanh, hình ảnh và câu ví dụ để tạo liên kết trí nhớ mạnh mẽ."
             />
             <FeatureCard
               icon="🎮"
-              title="Gamified Progress"
-              desc="Earn streaks, unlock achievements, and compete on leaderboards to stay motivated daily."
+              title="Gamification"
+              desc="Duy trì chuỗi ngày học (streak), mở khóa thành tựu và thi đua cùng bạn bè mỗi ngày."
             />
           </div>
         </div>
@@ -89,12 +86,12 @@ export default function Home() {
       <section className="py-24">
         <div className="container mx-auto px-4">
           <div className="rounded-3xl bg-gradient-to-br from-primary to-primary-dark p-16 text-center text-white shadow-xl">
-            <h2 className="text-4xl font-bold mb-6">Expand your vocabulary today</h2>
-            <p className="text-xl text-white/90 mb-10 max-w-2xl mx-auto">
-              {user ? "Pick up where you left off and master new words today." : "Create a free account and get your first \"Core 500 Words\" pack for free."}
+            <h2 className="text-4xl font-black mb-6">Mở rộng vốn từ ngay hôm nay</h2>
+            <p className="text-xl text-white/90 mb-10 max-w-2xl mx-auto font-medium">
+              {user ? "Tiếp tục hành trình chinh phục tiếng Anh từ nơi bạn đã dừng lại." : "Tạo tài khoản miễn phí và nhận ngay bộ \"500 Từ cốt lõi\" miễn phí."}
             </p>
-            <Link to={user ? "/topics" : "/register"} className="inline-block px-10 py-4 rounded-xl bg-white text-primary text-lg font-bold shadow-2xl hover:bg-gray-50 hover:-translate-y-1 transition-all">
-              {user ? "Explore Packs" : "Get Started Free"}
+            <Link to={user ? "/topics" : "/register"} className="inline-block px-10 py-4 rounded-xl bg-white text-primary text-lg font-black shadow-2xl hover:bg-gray-50 hover:-translate-y-1 transition-all">
+              {user ? "Bắt đầu học ngay" : "Đăng ký miễn phí"}
             </Link>
           </div>
         </div>

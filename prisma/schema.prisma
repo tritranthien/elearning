@@ -25,8 +25,10 @@ model User {
 model Topic {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   title       String
+  viTitle     String?
   slug        String   @unique
   description String?
+  viDescription String?
   level       String
   image       String?
   color       String?  // for UI gradient (e.g. "from-blue-500 to-cyan-500")
@@ -36,15 +38,19 @@ model Topic {
 }
 
 model Word {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  term        String
-  definition  String
-  example     String
-  phonetic    String?
-  type        String?  // noun, verb, adj
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  term          String
+  definition    String   // English definition
+  viDefinition  String?  // Vietnamese explanation
+  translation   String?  // Vietnamese meaning (the core word)
+  example       String   // English example
+  viExample     String?  // Vietnamese example translation
+  phonetic      String?
+  type          String?  // noun, verb, adj
   
-  topicId     String   @db.ObjectId
-  topic       Topic    @relation(fields: [topicId], references: [id])
+  audio         String?  // URL to audio file
+  topicId       String   @db.ObjectId
+  topic         Topic    @relation(fields: [topicId], references: [id])
   
   progress    UserProgress[]
 }
@@ -55,6 +61,8 @@ model UserProgress {
   wordId       String    @db.ObjectId
   
   status       String    @default("new") // new, learning, mastered
+  isIgnored    Boolean   @default(false)
+  isSelected   Boolean   @default(false)
   nextReviewAt DateTime?
   lastReviewedAt DateTime?
   streak       Int       @default(0)
