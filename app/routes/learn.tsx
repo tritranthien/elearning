@@ -73,7 +73,7 @@ export async function action({ params, request }: Route.ActionArgs) {
 
     if (intent === "generate-words") {
         const topicId = params.topicId;
-        const count = Math.min(Math.max(Number(formData.get("count")) || 5, 1), 20);
+        const count = Math.min(Math.max(Number(formData.get("count")) || 5, 1), 15);
 
         const topic = await prisma.topic.findUnique({
             where: { slug: topicId! },
@@ -90,25 +90,42 @@ export async function action({ params, request }: Route.ActionArgs) {
             const existingTerms = topic.words.map(w => w.term);
             const newWords = await generateWordsForTopic(topic.viTitle || topic.title, existingTerms, count);
 
-            await prisma.topic.update({
-                where: { id: topic.id },
-                data: {
-                    words: {
-                        create: newWords.map((w: any) => ({
-                            term: w.term,
-                            phonetic: w.phonetic,
-                            type: w.type,
-                            definition: w.definition,
-                            translation: w.translation,
-                            viDefinition: w.viDefinition,
-                            example: w.example,
-                            viExample: w.viExample
-                        }))
-                    }
+            // Filter out words that already exist globally (case-insensitive)
+            const wordsToCreate = [];
+            for (const w of newWords) {
+                const existing = await prisma.word.findFirst({
+                    where: { term: { equals: w.term, mode: "insensitive" } }
+                });
+                if (!existing) {
+                    wordsToCreate.push({
+                        term: w.term,
+                        phonetic: w.phonetic,
+                        type: w.type,
+                        definition: w.definition,
+                        translation: w.translation,
+                        viDefinition: w.viDefinition,
+                        example: w.example,
+                        viExample: w.viExample
+                    });
                 }
-            });
+            }
 
-            return { success: true, intent: "generate-words", count };
+            if (wordsToCreate.length > 0) {
+                await prisma.topic.update({
+                    where: { id: topic.id },
+                    data: {
+                        words: { create: wordsToCreate }
+                    }
+                });
+            }
+
+            const skipped = newWords.length - wordsToCreate.length;
+            return {
+                success: true,
+                intent: "generate-words",
+                count: wordsToCreate.length,
+                skipped
+            };
         } catch (error: any) {
             return { error: error.message || "Lỗi khi tạo từ vựng.", intent: "generate-words" };
         }
@@ -487,17 +504,6 @@ export default function Learn() {
         }, 1500);
     };
 
-    if (words.length === 0) {
-        return (
-            <div className="min-h-screen flex flex-col items-center justify-center p-4 text-center">
-                <h1 className="text-2xl font-bold mb-4 text-gray-900">Gói này hiện chưa có từ vựng nào!</h1>
-                <Link to="/topics" className="px-6 py-2 bg-primary text-white font-bold rounded-xl hover:bg-primary-dark transition-colors">
-                    Quay lại
-                </Link>
-            </div>
-        );
-    }
-
     // --- Renderers ---
 
     if (phase === "preview") {
@@ -555,9 +561,9 @@ export default function Learn() {
                                             type="number"
                                             name="count"
                                             value={aiWordCount}
-                                            onChange={(e) => setAiWordCount(Math.min(Math.max(parseInt(e.target.value) || 1, 1), 20))}
+                                            onChange={(e) => setAiWordCount(Math.min(Math.max(parseInt(e.target.value) || 1, 1), 15))}
                                             min="1"
-                                            max="20"
+                                            max="15"
                                             className="w-10 bg-transparent text-center font-black text-slate-800 focus:outline-none text-sm"
                                         />
                                         <span className="pr-2 text-[10px] font-black text-gray-400 uppercase">từ</span>
@@ -584,7 +590,13 @@ export default function Learn() {
                         </div>
 
                         <div className="divide-y divide-gray-50">
-                            {words.map((w, idx) => {
+                            {words.length === 0 ? (
+                                <div className="p-20 text-center">
+                                    <div className="text-6xl mb-6">✨</div>
+                                    <h3 className="text-2xl font-black text-gray-900 mb-2">Chủ đề này chưa có từ vựng</h3>
+                                    <p className="text-gray-500 font-medium max-w-sm mx-auto">Sử dụng nút "✨ AI Tạo" ở trên để tự động tạo danh sách từ vựng thông minh cho chủ đề này!</p>
+                                </div>
+                            ) : words.map((w, idx) => {
                                 const isIgnored = w.progress[0]?.isIgnored || false;
                                 const isSelected = w.progress[0]?.isSelected || false;
                                 return (
@@ -675,13 +687,28 @@ export default function Learn() {
                                 <span>Bắt đầu học {activeWords.length} từ</span>
                                 <span className="text-3xl">🚀</span>
                             </button>
+                        ) : words.length === 0 ? (
+                            <div className="bg-primary/10 border-2 border-primary/20 p-6 rounded-2xl text-center shadow-lg backdrop-blur-sm animate-bounce">
+                                <p className="text-primary font-black text-sm flex items-center justify-center gap-2">
+                                    <span>☝️</span> Nhấn "AI Tạo" để bắt đầu!
+                                </p>
+                            </div>
                         ) : (
                             <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl text-center shadow-lg">
                                 <p className="text-amber-800 font-bold text-sm">Vui lòng chọn ít nhất 1 từ vựng để bắt đầu học!</p>
                             </div>
                         )}
-                        <div className="text-center mt-6">
-                            <Link to="/topics" className="text-gray-400 hover:text-gray-600 transition-colors font-black text-xs uppercase tracking-widest">Quay lại danh sách chủ đề</Link>
+                        <div className="text-center mt-6 flex flex-wrap items-center justify-center gap-4">
+                            <Link to="/" className="text-gray-400 hover:text-gray-600 transition-colors font-black text-xs uppercase tracking-widest">🏠 Trang chủ</Link>
+                            <Link to="/topics" className="text-gray-400 hover:text-gray-600 transition-colors font-black text-xs uppercase tracking-widest">📚 Danh sách chủ đề</Link>
+                            {words.length >= 4 && (
+                                <Link
+                                    to={`/quiz/${(topic as any).slug}`}
+                                    className="px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-black text-xs uppercase tracking-widest rounded-xl hover:shadow-lg transition-all"
+                                >
+                                    📝 Làm bài kiểm tra
+                                </Link>
+                            )}
                         </div>
                     </div>
                 </div>

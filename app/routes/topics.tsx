@@ -40,10 +40,20 @@ export default function Topics() {
                     <p className="text-gray-500 font-medium">Chọn một chủ đề để bắt đầu mở rộng vốn từ của bạn ngay hôm nay.</p>
                 </div>
 
-                <div className="flex bg-gray-100 p-1.5 rounded-2xl shadow-inner font-bold">
-                    <button className="px-6 py-2 text-sm rounded-xl bg-white shadow-sm text-gray-900 transition-all">Tất cả</button>
-                    <button className="px-6 py-2 text-sm text-gray-500 hover:text-gray-900 transition-colors">Đang học</button>
-                    <button className="px-6 py-2 text-sm text-gray-500 hover:text-gray-900 transition-colors">Đã xong</button>
+                <div className="flex flex-col sm:flex-row bg-gray-100 p-1.5 rounded-2xl shadow-inner font-bold gap-2 sm:gap-0">
+                    <div className="flex bg-white/50 backdrop-blur rounded-xl p-0.5">
+                        <button className="px-6 py-2 text-sm rounded-xl bg-white shadow-sm text-gray-900 transition-all">Tất cả</button>
+                        <button className="px-6 py-2 text-sm text-gray-500 hover:text-gray-900 transition-colors">Đang học</button>
+                        <button className="px-6 py-2 text-sm text-gray-500 hover:text-gray-900 transition-colors">Đã xong</button>
+                    </div>
+                    <div className="sm:ml-4 flex items-center">
+                        <Link
+                            to="/topics/new"
+                            className="bg-primary text-white px-6 py-2 rounded-xl text-sm hover:bg-primary-dark transition-all shadow-glow-primary active:scale-95 flex items-center gap-2"
+                        >
+                            <span>+</span> Tạo chủ đề
+                        </Link>
+                    </div>
                 </div>
             </div>
 

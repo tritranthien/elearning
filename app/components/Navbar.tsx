@@ -25,6 +25,12 @@ export function Navbar({ user }: NavbarProps) {
                         <NavLink to="/topics" className={({ isActive }) => `text-[0.95rem] font-bold transition-colors hover:text-primary ${isActive ? "text-primary" : "text-gray-500"}`}>
                             Bộ từ vựng
                         </NavLink>
+                        <NavLink to="/dictionary" className={({ isActive }) => `text-[0.95rem] font-bold transition-colors hover:text-primary ${isActive ? "text-primary" : "text-gray-500"}`}>
+                            Từ điển
+                        </NavLink>
+                        <NavLink to="/practice" className={({ isActive }) => `text-[0.95rem] font-bold transition-colors hover:text-primary ${isActive ? "text-primary" : "text-gray-500"}`}>
+                            Hội thoại
+                        </NavLink>
                         <NavLink to="/review" className={({ isActive }) => `text-[0.95rem] font-bold transition-colors hover:text-primary ${isActive ? "text-primary" : "text-gray-500"}`}>
                             Ôn tập
                         </NavLink>

@@ -49,8 +49,8 @@ model Word {
   type          String?  // noun, verb, adj
   
   audio         String?  // URL to audio file
-  topicId       String   @db.ObjectId
-  topic         Topic    @relation(fields: [topicId], references: [id])
+  topicId       String?  @db.ObjectId  // Optional - null means uncategorized
+  topic         Topic?   @relation(fields: [topicId], references: [id])
   
   progress    UserProgress[]
 }
@@ -71,4 +71,31 @@ model UserProgress {
   word         Word      @relation(fields: [wordId], references: [id])
 
   @@unique([userId, wordId])
+}
+
+// Conversation practice - stores user's spoken sentences
+model Conversation {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String   @db.ObjectId
+  vietnameseText String  // Original Vietnamese text from speech
+  englishText   String   // Translated English text
+  createdAt     DateTime @default(now())
+  
+  phrases       Phrase[] // Extracted phrases from this conversation
+}
+
+// Phrases extracted from conversations for learning
+model Phrase {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  english         String   // English phrase/word
+  vietnamese      String   // Vietnamese meaning
+  phonetic        String?  // IPA pronunciation
+  partOfSpeech    String?  // noun, verb, phrase, etc.
+  example         String?  // Example usage in a sentence
+  viExample       String?  // Vietnamese translation of example
+  
+  conversationId  String   @db.ObjectId
+  conversation    Conversation @relation(fields: [conversationId], references: [id])
+  
+  createdAt       DateTime @default(now())
 }

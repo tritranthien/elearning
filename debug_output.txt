@@ -1,0 +1,61 @@
+prisma:tryLoadEnv Environment variables not found at null +5ms
+prisma:tryLoadEnv Environment variables loaded from C:\Users\Admin\Desktop\elearning\.env +1ms
+prisma:client checkPlatformCaching:postinstall false +1ms
+prisma:client checkPlatformCaching:ciName undefined +0ms
+prisma:tryLoadEnv Environment variables not found at null +0ms
+prisma:tryLoadEnv Environment variables loaded from C:\Users\Admin\Desktop\elearning\.env +0ms
+prisma:client dirname C:\Users\Admin\Desktop\elearning\node_modules\.prisma\client +1ms
+prisma:client relativePath ../../../prisma +0ms
+prisma:client cwd C:\Users\Admin\Desktop\elearning\prisma +0ms
+prisma:client clientVersion 6.19.1 +0ms
+prisma:client:libraryEngine internalSetup +1ms
+prisma:client Prisma Client call: +2ms
+prisma:client prisma.word.findFirst({}) +0ms
+prisma:client Generated request: +0ms
+prisma:client {
+  "modelName": "Word",
+  "action": "findFirst",
+  "query": {
+    "arguments": {},
+    "selection": {
+      "$composites": true,
+      "$scalars": true
+    }
+  }
+}
+ +0ms
+prisma:client:libraryEngine sending request, this.libraryStarted: false +0ms
+prisma:client:engines:resolveEnginePath enginePath C:\Users\Admin\Desktop\elearning\node_modules\.prisma\client\query_engine-windows.dll.node +1ms
+prisma:client:libraryEngine library starting +3ms
+prisma:client:libraryEngine library started +0ms
+Check Word: null
+prisma:client Prisma Client call: +527ms
+prisma:client prisma.topic.findFirst({
+  include: {
+    words: true
+  }
+}) +1ms
+prisma:client Generated request: +0ms
+prisma:client {
+  "modelName": "Topic",
+  "action": "findFirst",
+  "query": {
+    "arguments": {},
+    "selection": {
+      "$composites": true,
+      "$scalars": true,
+      "words": {
+        "arguments": {},
+        "selection": {
+          "$composites": true,
+          "$scalars": true
+        }
+      }
+    }
+  }
+}
+ +0ms
+prisma:client:libraryEngine sending request, this.libraryStarted: true +0ms
+Check Topic & first word: {}
+prisma:client:libraryEngine library stopping +1ms
+prisma:client:libraryEngine library stopped +1ms
