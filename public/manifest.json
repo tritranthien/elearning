@@ -80,12 +80,6 @@
       "short_name": "Hội thoại",
       "url": "/practice",
       "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
-    },
-    {
-      "name": "Ôn tập",
-      "short_name": "Ôn tập",
-      "url": "/review",
-      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
     }
   ]
 }

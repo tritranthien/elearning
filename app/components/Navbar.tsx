@@ -17,7 +17,6 @@ export function Navbar({ user }: NavbarProps) {
         { to: "/topics", label: "Bộ từ vựng", icon: "📚" },
         { to: "/dictionary", label: "Từ điển", icon: "📖" },
         { to: "/practice", label: "Hội thoại", icon: "🎤" },
-        { to: "/review", label: "Ôn tập", icon: "🔄" },
     ];
 
     return (
