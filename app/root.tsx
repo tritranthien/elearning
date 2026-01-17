@@ -22,22 +22,59 @@ export const links: Route.LinksFunction = () => [
     rel: "stylesheet",
     href: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap",
   },
+  // PWA Manifest
+  { rel: "manifest", href: "/manifest.json" },
+  // Apple Touch Icons
+  { rel: "apple-touch-icon", href: "/icons/icon-192x192.png" },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="vi">
       <head>
         <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+
+        {/* PWA Meta Tags */}
+        <meta name="theme-color" content="#8b5cf6" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="LinguaFast" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="application-name" content="LinguaFast" />
+        <meta name="format-detection" content="telephone=no" />
+        <meta name="msapplication-TileColor" content="#8b5cf6" />
+        <meta name="msapplication-tap-highlight" content="no" />
+
+        {/* SEO */}
+        <meta name="description" content="LinguaFast - Ứng dụng học tiếng Anh thông minh với AI. Học từ vựng, hội thoại và ôn tập mọi lúc mọi nơi." />
+        <meta name="keywords" content="học tiếng anh, từ vựng, hội thoại, ôn tập, AI, học ngoại ngữ" />
+
         <Meta />
         <Links />
       </head>
       <body>
         {children}
-        <Toaster position="top-right" richColors />
+        <Toaster position="top-center" richColors />
         <ScrollRestoration />
         <Scripts />
+
+        {/* Register Service Worker */}
+        <script dangerouslySetInnerHTML={{
+          __html: `
+            if ('serviceWorker' in navigator) {
+              window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/sw.js')
+                  .then(function(registration) {
+                    console.log('[PWA] Service Worker registered:', registration.scope);
+                  })
+                  .catch(function(error) {
+                    console.log('[PWA] Service Worker registration failed:', error);
+                  });
+              });
+            }
+          `
+        }} />
       </body>
     </html>
   );
