@@ -1,7 +1,7 @@
 // LinguaFast Service Worker
-const CACHE_NAME = 'linguafast-v2'; // Bumped version to invalidate old cache
-const STATIC_CACHE = 'linguafast-static-v2';
-const DYNAMIC_CACHE = 'linguafast-dynamic-v2';
+const CACHE_NAME = 'linguafast-v3';
+const STATIC_CACHE = 'linguafast-static-v3';
+const DYNAMIC_CACHE = 'linguafast-dynamic-v3';
 
 // Static assets to cache
 const STATIC_ASSETS = [
