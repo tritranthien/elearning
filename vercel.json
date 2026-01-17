@@ -1,17 +1,6 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run build",
-  "outputDirectory": "build/client",
-  "framework": null,
   "installCommand": "npm install && npx prisma generate",
-  "functions": {
-    "build/server/index.js": {
-      "runtime": "@vercel/node@3.2.0"
-    }
-  },
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/build/server/index.js"
-    }
-  ]
+  "framework": "remix"
 }
