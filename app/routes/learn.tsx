@@ -32,38 +32,54 @@ export async function loader({ params, request }: Route.LoaderArgs) {
         throw new Response("Not Found", { status: 404 });
     }
 
+    // Fetch full user for UI
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, firstName: true, lastName: true, email: true }
+    });
+
     // Auto-select 10 words if none are selected
-    const selectedCount = topic.words.filter(w => w.progress[0]?.isSelected).length;
-    if (selectedCount === 0) {
-        const wordsToSelect = topic.words
-            .filter(w => !w.progress[0]?.isIgnored)
-            .slice(0, 10);
+    try {
+        const selectedCount = topic.words.filter(w => w.progress[0]?.isSelected).length;
+        if (selectedCount === 0) {
+            console.log("Auto-selecting words for user", userId);
+            const wordsToSelect = topic.words
+                .filter(w => !w.progress[0]?.isIgnored)
+                .slice(0, 10);
 
-        if (wordsToSelect.length > 0) {
-            await Promise.all(wordsToSelect.map(w =>
-                prisma.userProgress.upsert({
-                    where: { userId_wordId: { userId, wordId: w.id } },
-                    create: { userId, wordId: w.id, isSelected: true },
-                    update: { isSelected: true }
-                })
-            ));
+            if (wordsToSelect.length > 0) {
+                await Promise.all(wordsToSelect.map(w =>
+                    prisma.userProgress.upsert({
+                        where: { userId_wordId: { userId, wordId: w.id } },
+                        create: { userId, wordId: w.id, isSelected: true },
+                        update: { isSelected: true }
+                    })
+                ));
 
-            // Re-fetch to get updated state
-            const updatedTopic = await prisma.topic.findUnique({
-                where: { id: topic.id },
-                include: {
-                    words: {
-                        include: {
-                            progress: { where: { userId } }
+                // Re-fetch to get updated state
+                const updatedTopic = await prisma.topic.findUnique({
+                    where: { id: topic.id },
+                    include: {
+                        words: {
+                            include: {
+                                progress: { where: { userId } }
+                            }
                         }
                     }
+                });
+
+                if (updatedTopic) {
+                    return { topic: updatedTopic, allWords: updatedTopic.words, userId, user };
                 }
-            });
-            return { topic: updatedTopic!, allWords: updatedTopic!.words, userId };
+            }
         }
+    } catch (e) {
+        console.error("Error in auto-select:", e);
+        // Fallback to existing topic if auto-select fails
     }
 
-    return { topic, allWords: topic.words, userId };
+    console.log(`Loaded topic: ${topic.title}, Words: ${topic.words.length}`);
+    return { topic, allWords: topic.words, userId, user };
 }
 
 export async function action({ params, request }: Route.ActionArgs) {
@@ -204,7 +220,9 @@ export async function action({ params, request }: Route.ActionArgs) {
 type Phase = "preview" | "learning" | "matching" | "quiz" | "spelling" | "completed";
 
 export default function Learn() {
-    const { topic, allWords, userId } = useLoaderData<typeof loader>();
+    // ⚠️ DO NOT use useOutletContext() here because this route is NOT inside the main layout.
+    // Use the 'user' object returned from the loader instead.
+    const { topic, allWords, userId, user } = useLoaderData<typeof loader>();
     const fetcher = useFetcher();
     const isGenerating = fetcher.state !== "idle";
     const [aiWordCount, setAiWordCount] = useState(5);
@@ -508,111 +526,133 @@ export default function Learn() {
 
     if (phase === "preview") {
         return (
-            <div className="min-h-[calc(100vh-70px)] bg-gray-50 py-12 px-4 font-sans">
+            <div className="min-h-[calc(100vh-70px)] bg-gray-50 py-6 md:py-12 px-4 font-sans">
                 <div className="max-w-4xl mx-auto">
-                    <div className="text-center mb-12">
+                    <div className="text-center mb-6 md:mb-12">
                         <span className="text-primary font-black tracking-widest uppercase text-xs bg-primary/10 px-4 py-1.5 rounded-full border border-primary/10">
                             {(topic as any).level === 'Beginner' ? 'Cơ bản' : (topic as any).level === 'Intermediate' ? 'Trung cấp' : 'Nâng cao'}
                         </span>
-                        <h1 className="text-4xl md:text-5xl font-black text-gray-900 mt-6 mb-4 leading-tight">{(topic as any).viTitle || (topic as any).title}</h1>
-                        <p className="text-gray-500 text-lg font-medium max-w-2xl mx-auto">{(topic as any).viDescription || topic.description}</p>
+                        <h1 className="text-2xl md:text-5xl font-black text-gray-900 mt-4 md:mt-6 mb-2 md:mb-4 leading-tight">{(topic as any).viTitle || (topic as any).title}</h1>
+                        <p className="text-gray-500 text-sm md:text-lg font-medium max-w-2xl mx-auto">{(topic as any).viDescription || topic.description}</p>
                     </div>
 
-                    <div className="bg-white rounded-[2rem] shadow-2xl border border-gray-100 overflow-hidden mb-10">
-                        <div className="p-8 bg-gray-50/50 border-b border-gray-100 flex justify-between items-center">
-                            <div>
-                                <h2 className="font-black text-xl text-gray-800">Nội dung bài học</h2>
-                                <p className="text-sm text-gray-400 font-bold uppercase tracking-tighter mt-1">Học kỹ {words.length} từ vựng trước khi kiểm tra</p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
-                                    <button
-                                        onClick={toggleSelectAll}
-                                        className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all text-slate-500 hover:bg-white hover:text-slate-800"
-                                    >
-                                        {allWords.filter(w => !w.progress[0]?.isIgnored && w.progress[0]?.isSelected).length === allWords.filter(w => !w.progress[0]?.isIgnored).length ? "🧊 Bỏ chọn" : "✅ Chọn hết"}
-                                    </button>
-                                    <div className="w-px h-4 bg-slate-200 self-center mx-1"></div>
-                                    {[
-                                        { id: 'active', label: '📖 Đang học', color: 'bg-primary' },
-                                        { id: 'ignored', label: '🗑️ Đã bỏ qua', color: 'bg-red-500' },
-                                        { id: 'all', label: '📚 Tất cả', color: 'bg-slate-600' }
-                                    ].map((f) => (
-                                        <button
-                                            key={f.id}
-                                            onClick={() => setFilter(f.id as any)}
-                                            className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${filter === f.id
-                                                ? `${f.color} text-white shadow-sm`
-                                                : "text-slate-400 hover:text-slate-600"
-                                                }`}
-                                        >
-                                            {f.label}
-                                        </button>
-                                    ))}
-                                </div>
-                                {fetcher.data?.error && (
-                                    <span className="text-xs text-red-500 font-bold max-w-[200px] text-right">{fetcher.data.error}</span>
-                                )}
-                                <fetcher.Form method="post" className="flex items-center gap-2">
-                                    <input type="hidden" name="intent" value="generate-words" />
-                                    <div className="relative flex items-center bg-slate-100 rounded-xl border border-gray-200 p-1 group">
-                                        <span className="pl-2 pr-1 text-[10px] font-black text-gray-400 uppercase">Thêm</span>
-                                        <input
-                                            type="number"
-                                            name="count"
-                                            value={aiWordCount}
-                                            onChange={(e) => setAiWordCount(Math.min(Math.max(parseInt(e.target.value) || 1, 1), 15))}
-                                            min="1"
-                                            max="15"
-                                            className="w-10 bg-transparent text-center font-black text-slate-800 focus:outline-none text-sm"
-                                        />
-                                        <span className="pr-2 text-[10px] font-black text-gray-400 uppercase">từ</span>
+                    <div className="bg-white rounded-2xl md:rounded-[2rem] shadow-xl md:shadow-2xl border border-gray-100 overflow-hidden mb-6 md:mb-10">
+                        {/* Header - Stacked on mobile */}
+                        <div className="p-4 md:p-8 bg-gray-50/50 border-b border-gray-100">
+                            <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h2 className="font-black text-lg md:text-xl text-gray-800">Nội dung bài học</h2>
+                                        <p className="text-xs md:text-sm text-gray-400 font-bold uppercase tracking-tighter mt-1">{words.length} từ vựng</p>
                                     </div>
-                                    <button
-                                        type="submit"
-                                        disabled={isGenerating}
-                                        className="px-4 py-2 bg-slate-900 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-slate-800 transition-all flex items-center gap-2 disabled:opacity-50 shadow-lg active:scale-95"
-                                    >
-                                        {isGenerating ? (
-                                            <span className="flex items-center gap-2">
-                                                <svg className="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                                AI...
-                                            </span>
-                                        ) : (
-                                            <span>✨ AI Tạo</span>
+                                    <div className="md:hidden w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary text-lg font-bold">
+                                        {words.length}
+                                    </div>
+                                </div>
+
+                                {/* Controls - Scrollable on mobile */}
+                                <div className="flex flex-col gap-3">
+                                    <div className="flex overflow-x-auto pb-1 scrollbar-hide gap-2">
+                                        <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 flex-shrink-0">
+                                            <button
+                                                onClick={toggleSelectAll}
+                                                className="px-2 md:px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all text-slate-500 hover:bg-white hover:text-slate-800 whitespace-nowrap"
+                                            >
+                                                {allWords.filter((w: any) => !w.progress[0]?.isIgnored && w.progress[0]?.isSelected).length === allWords.filter((w: any) => !w.progress[0]?.isIgnored).length ? "🧊 Bỏ chọn" : "✅ Chọn hết"}
+                                            </button>
+                                        </div>
+                                        <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 flex-shrink-0">
+                                            {[
+                                                { id: 'active', label: '📖', fullLabel: '📖 Đang học', color: 'bg-primary' },
+                                                { id: 'ignored', label: '🗑️', fullLabel: '🗑️ Bỏ qua', color: 'bg-red-500' },
+                                                { id: 'all', label: '📚', fullLabel: '📚 Tất cả', color: 'bg-slate-600' }
+                                            ].map((f) => (
+                                                <button
+                                                    key={f.id}
+                                                    onClick={() => setFilter(f.id as any)}
+                                                    className={`px-2 md:px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all whitespace-nowrap ${filter === f.id
+                                                        ? `${f.color} text-white shadow-sm`
+                                                        : "text-slate-400 hover:text-slate-600"
+                                                        }`}
+                                                >
+                                                    <span className="md:hidden">{f.label}</span>
+                                                    <span className="hidden md:inline">{f.fullLabel}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* AI Generate Form */}
+                                    <fetcher.Form method="post" className="flex items-center gap-2">
+                                        <input type="hidden" name="intent" value="generate-words" />
+                                        <div className="relative flex items-center bg-slate-100 rounded-xl border border-gray-200 p-1 group flex-shrink-0">
+                                            <span className="pl-2 pr-1 text-[10px] font-black text-gray-400 uppercase">Thêm</span>
+                                            <input
+                                                type="number"
+                                                name="count"
+                                                value={aiWordCount}
+                                                onChange={(e) => setAiWordCount(Math.min(Math.max(parseInt(e.target.value) || 1, 1), 15))}
+                                                min="1"
+                                                max="15"
+                                                className="w-8 bg-transparent text-center font-black text-slate-800 focus:outline-none text-sm"
+                                            />
+                                            <span className="pr-2 text-[10px] font-black text-gray-400 uppercase">từ</span>
+                                        </div>
+                                        <button
+                                            type="submit"
+                                            disabled={isGenerating}
+                                            className="flex-1 md:flex-none px-4 py-2 bg-slate-900 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-slate-800 transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg active:scale-95"
+                                        >
+                                            {isGenerating ? (
+                                                <span className="flex items-center gap-2">
+                                                    <svg className="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                                    AI...
+                                                </span>
+                                            ) : (
+                                                <span>✨ AI Tạo</span>
+                                            )}
+                                        </button>
+                                        {fetcher.data?.error && (
+                                            <span className="text-xs text-red-500 font-bold">{fetcher.data.error}</span>
                                         )}
-                                    </button>
-                                </fetcher.Form>
-                                <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary text-xl font-bold">
+                                    </fetcher.Form>
+                                </div>
+
+                                {/* Word count badge - Desktop only */}
+                                <div className="hidden md:flex w-12 h-12 bg-primary/10 rounded-2xl items-center justify-center text-primary text-xl font-bold flex-shrink-0">
                                     {words.length}
                                 </div>
                             </div>
                         </div>
 
                         <div className="divide-y divide-gray-50">
+                            {/* Debug Info */}
+                            <div className="hidden">{allWords.length} words loaded</div>
+
                             {words.length === 0 ? (
                                 <div className="p-20 text-center">
                                     <div className="text-6xl mb-6">✨</div>
                                     <h3 className="text-2xl font-black text-gray-900 mb-2">Chủ đề này chưa có từ vựng</h3>
                                     <p className="text-gray-500 font-medium max-w-sm mx-auto">Sử dụng nút "✨ AI Tạo" ở trên để tự động tạo danh sách từ vựng thông minh cho chủ đề này!</p>
                                 </div>
-                            ) : words.map((w, idx) => {
+                            ) : words.map((w: any, idx: number) => {
                                 const isIgnored = w.progress[0]?.isIgnored || false;
                                 const isSelected = w.progress[0]?.isSelected || false;
                                 return (
-                                    <div key={w.id} className={`p-8 transition-all group border-b border-gray-50 last:border-0 ${isIgnored ? 'bg-gray-100/50 opacity-60' : isSelected ? 'bg-primary/[0.02]' : 'hover:bg-gray-50'}`}>
-                                        <div className="flex flex-col md:flex-row gap-6">
-                                            <div className="flex-shrink-0 flex flex-col items-center gap-4">
+                                    <div key={w.id} className={`p-4 md:p-6 transition-all group border-b border-gray-50 last:border-0 ${isIgnored ? 'bg-gray-100/50 opacity-60' : isSelected ? 'bg-primary/[0.02]' : 'hover:bg-gray-50'}`}>
+                                        <div className="flex gap-3 md:gap-6">
+                                            {/* Left side - Number and actions */}
+                                            <div className="flex-shrink-0 flex flex-col items-center gap-2 md:gap-3">
                                                 {!isIgnored && (
                                                     <button
                                                         onClick={() => toggleWordSelection(w.id, isSelected)}
-                                                        className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${isSelected ? "bg-primary border-primary text-white" : "border-gray-200 hover:border-primary"
+                                                        className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all touch-target ${isSelected ? "bg-primary border-primary text-white" : "border-gray-200 hover:border-primary"
                                                             }`}
                                                     >
                                                         {isSelected && <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>}
                                                     </button>
                                                 )}
-                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-lg font-black transition-all transform group-hover:rotate-6 ${isIgnored ? 'bg-gray-200 text-gray-400' : isSelected ? 'bg-primary text-white' : 'bg-gray-100 text-gray-400'
+                                                <div className={`w-8 h-8 md:w-10 md:h-10 rounded-xl flex items-center justify-center text-sm md:text-lg font-black transition-all ${isIgnored ? 'bg-gray-200 text-gray-400' : isSelected ? 'bg-primary text-white' : 'bg-gray-100 text-gray-400'
                                                     }`}>
                                                     {idx + 1}
                                                 </div>
@@ -624,17 +664,17 @@ export default function Learn() {
                                                     <button
                                                         type="submit"
                                                         title={isIgnored ? "Khôi phục từ" : "Bỏ qua từ này"}
-                                                        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isIgnored
+                                                        className={`w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center transition-all touch-target ${isIgnored
                                                             ? "bg-green-100 text-green-600 hover:bg-green-200"
                                                             : "bg-red-50 text-red-300 hover:bg-red-500 hover:text-white"
                                                             }`}
                                                     >
                                                         {isIgnored ? (
-                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 md:h-5 md:w-5" viewBox="0 0 20 20" fill="currentColor">
                                                                 <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
                                                             </svg>
                                                         ) : (
-                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 md:h-5 md:w-5" viewBox="0 0 20 20" fill="currentColor">
                                                                 <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
                                                             </svg>
                                                         )}
@@ -642,32 +682,31 @@ export default function Learn() {
                                                 </fetcher.Form>
                                             </div>
 
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-3 mb-2">
-                                                    <h3 className={`font-black text-2xl ${isIgnored ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{w.term}</h3>
-                                                    <span className="font-mono text-[10px] font-black text-primary bg-primary/5 px-2 py-0.5 rounded-md uppercase border border-primary/10">
+                                            {/* Right side - Word content */}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex flex-wrap items-center gap-2 mb-1">
+                                                    <h3 className={`font-black text-lg md:text-2xl ${isIgnored ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{w.term}</h3>
+                                                    <span className="font-mono text-[9px] md:text-[10px] font-black text-primary bg-primary/5 px-1.5 py-0.5 rounded uppercase border border-primary/10">
                                                         {w.type}
                                                     </span>
-                                                    {w.phonetic && <span className="text-gray-400 font-medium text-sm">{w.phonetic}</span>}
                                                 </div>
+                                                {w.phonetic && <p className="text-gray-400 font-medium text-xs md:text-sm mb-2">{w.phonetic}</p>}
 
-                                                <div className="flex flex-col gap-1 mb-4">
-                                                    <div className={`text-xl font-black leading-tight ${isIgnored ? 'text-gray-400' : 'text-primary'}`}>
+                                                <div className="mb-3">
+                                                    <div className={`text-base md:text-xl font-black leading-tight ${isIgnored ? 'text-gray-400' : 'text-primary'}`}>
                                                         {(w as any).translation || "Chưa có dịch"}
                                                     </div>
-                                                    <div className="text-gray-500 font-medium italic text-sm">
+                                                    <div className="text-gray-500 font-medium italic text-xs md:text-sm mt-1 line-clamp-2">
                                                         {(w as any).viDefinition || w.definition}
                                                     </div>
                                                 </div>
 
-                                                <div className={`rounded-2xl p-4 border transition-colors ${isIgnored ? 'bg-gray-100 border-gray-200' : 'bg-gray-50 border-gray-100'
+                                                <div className={`rounded-xl p-3 border transition-colors ${isIgnored ? 'bg-gray-100 border-gray-200' : 'bg-gray-50 border-gray-100'
                                                     }`}>
-                                                    <div className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-                                                        <span className="w-4 h-px bg-gray-200"></span> Ví dụ minh họa
-                                                    </div>
-                                                    <p className={`font-bold mb-1 ${isIgnored ? 'text-gray-400' : 'text-gray-700'}`}>"{w.example}"</p>
+                                                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Ví dụ</div>
+                                                    <p className={`font-medium text-xs md:text-sm mb-1 ${isIgnored ? 'text-gray-400' : 'text-gray-700'}`}>"{w.example}"</p>
                                                     {(w as any).viExample && (
-                                                        <p className="text-gray-400 text-sm font-medium italic">→ {(w as any).viExample}</p>
+                                                        <p className="text-gray-400 text-xs font-medium italic">→ {(w as any).viExample}</p>
                                                     )}
                                                 </div>
                                             </div>
@@ -678,14 +717,14 @@ export default function Learn() {
                         </div>
                     </div>
 
-                    <div className="sticky bottom-8 max-w-md mx-auto">
+                    <div className="sticky bottom-4 md:bottom-8 max-w-md mx-auto px-2">
                         {activeWords.length > 0 ? (
                             <button
                                 onClick={() => setPhase("learning")}
-                                className="w-full py-6 bg-primary text-white font-black text-2xl rounded-2xl shadow-glow-primary hover:bg-primary-dark hover:-translate-y-1 transition-all active:translate-y-0 flex items-center justify-center gap-4"
+                                className="w-full py-4 md:py-6 bg-primary text-white font-black text-lg md:text-2xl rounded-xl md:rounded-2xl shadow-glow-primary hover:bg-primary-dark hover:-translate-y-1 transition-all active:translate-y-0 flex items-center justify-center gap-3 touch-target"
                             >
                                 <span>Bắt đầu học {activeWords.length} từ</span>
-                                <span className="text-3xl">🚀</span>
+                                <span className="text-2xl md:text-3xl">🚀</span>
                             </button>
                         ) : words.length === 0 ? (
                             <div className="bg-primary/10 border-2 border-primary/20 p-6 rounded-2xl text-center shadow-lg backdrop-blur-sm animate-bounce">
@@ -1014,82 +1053,84 @@ export default function Learn() {
 
     return (
         <div className="min-h-[calc(100vh-70px)] bg-gray-50 flex flex-col pb-20 font-sans">
-            <div className="w-full bg-white border-b border-gray-100 h-2">
+            <div className="w-full bg-white border-b border-gray-100 h-1.5 md:h-2">
                 <div className="bg-primary transition-all duration-700 shadow-glow" style={{ width: `${learningProgress}%`, height: '100%' }}></div>
             </div>
 
-            <div className="flex-1 container mx-auto px-4 flex flex-col items-center py-12">
-                <div className="w-full max-w-2xl mb-10 flex justify-between items-center text-gray-400">
-                    <div className="flex items-center gap-6">
-                        <button onClick={() => setPhase("preview")} className="hover:text-primary transition-colors font-black text-sm flex items-center gap-2 group">
-                            <span className="text-xl group-hover:-translate-x-1 transition-transform">←</span> Quay lại
+            <div className="flex-1 container mx-auto px-3 md:px-4 flex flex-col items-center py-6 md:py-12">
+                {/* Header */}
+                <div className="w-full max-w-2xl mb-4 md:mb-10 flex justify-between items-center text-gray-400">
+                    <div className="flex items-center gap-2 md:gap-6">
+                        <button onClick={() => setPhase("preview")} className="hover:text-primary transition-colors font-black text-xs md:text-sm flex items-center gap-1 md:gap-2 group">
+                            <span className="text-lg md:text-xl group-hover:-translate-x-1 transition-transform">←</span>
+                            <span className="hidden sm:inline">Quay lại</span>
                         </button>
-                        <button onClick={skipPhase} className="text-[10px] font-black uppercase tracking-widest text-gray-300 hover:text-primary transition-colors">
-                            (Bỏ qua phần học →)
+                        <button onClick={skipPhase} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-gray-300 hover:text-primary transition-colors">
+                            (Bỏ qua →)
                         </button>
                     </div>
-                    <span className="font-black bg-white px-4 py-1.5 rounded-full border border-gray-100 shadow-sm text-xs text-primary uppercase tracking-widest leading-none">
-                        Từ {currentCard + 1} / {words.length}
+                    <span className="font-black bg-white px-2 md:px-4 py-1 md:py-1.5 rounded-full border border-gray-100 shadow-sm text-[10px] md:text-xs text-primary uppercase tracking-widest leading-none">
+                        {currentCard + 1} / {words.length}
                     </span>
                 </div>
 
                 {/* Study Card */}
-                <div className="w-full max-w-2xl bg-white rounded-[3rem] shadow-2xl border border-gray-100 overflow-hidden mb-12">
+                <div className="w-full max-w-2xl bg-white rounded-2xl md:rounded-[3rem] shadow-2xl border border-gray-100 overflow-hidden mb-6 md:mb-12">
                     {/* Hero Section: English Word */}
-                    <div className="bg-slate-900 p-12 text-center relative overflow-hidden">
+                    <div className="bg-slate-900 p-6 md:p-12 text-center relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary to-transparent opacity-50"></div>
-                        <div className="flex flex-wrap justify-center gap-3 mb-4">
+                        <div className="flex flex-wrap justify-center gap-2 md:gap-3 mb-3 md:mb-4">
                             {viTypes.map((t, i) => (
-                                <span key={i} className="inline-block px-4 py-1 rounded-full bg-primary/20 text-primary-light text-[10px] font-black uppercase tracking-[0.2em] border border-primary/20">
+                                <span key={i} className="inline-block px-2 md:px-4 py-0.5 md:py-1 rounded-full bg-primary/20 text-primary-light text-[8px] md:text-[10px] font-black uppercase tracking-[0.15em] md:tracking-[0.2em] border border-primary/20">
                                     {t}
                                 </span>
                             ))}
                         </div>
 
-                        <div className="relative inline-block mb-4 group/word">
-                            <h2 className="text-6xl md:text-8xl font-black text-white tracking-tighter">{word.term}</h2>
+                        <div className="relative inline-block mb-2 md:mb-4 group/word max-w-full">
+                            <h2 className="text-3xl sm:text-4xl md:text-6xl lg:text-8xl font-black text-white tracking-tighter break-words overflow-wrap-anywhere">{word.term}</h2>
                             <button
                                 onClick={() => speak(word.term)}
-                                className="absolute -right-12 top-1/2 -translate-y-1/2 w-10 h-10 bg-primary/20 hover:bg-primary text-primary-light hover:text-white rounded-full flex items-center justify-center transition-all shadow-lg border border-primary/30 group-hover/word:scale-110 active:scale-90"
+                                className="absolute -right-8 md:-right-12 top-1/2 -translate-y-1/2 w-8 h-8 md:w-10 md:h-10 bg-primary/20 hover:bg-primary text-primary-light hover:text-white rounded-full flex items-center justify-center transition-all shadow-lg border border-primary/30 group-hover/word:scale-110 active:scale-90 touch-target"
                                 title="Phát âm"
                             >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 md:h-5 md:w-5" viewBox="0 0 20 20" fill="currentColor">
                                     <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.983 5.983 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.984 3.984 0 00-1.172-2.828 1 1 0 010-1.415z" clipRule="evenodd" />
                                 </svg>
                             </button>
                         </div>
 
                         {word.phonetic && (
-                            <div className="text-slate-400 font-mono text-xl">{word.phonetic}</div>
+                            <div className="text-slate-400 font-mono text-sm md:text-xl">{word.phonetic}</div>
                         )}
-                        <div className="absolute -right-10 -bottom-10 text-[12rem] text-white/5 font-black select-none pointer-events-none uppercase">
+                        <div className="absolute -right-6 md:-right-10 -bottom-6 md:-bottom-10 text-[6rem] md:text-[12rem] text-white/5 font-black select-none pointer-events-none uppercase">
                             {word.term.charAt(0)}
                         </div>
                     </div>
 
                     {/* Information Section */}
-                    <div className="p-10 md:p-14 space-y-12">
+                    <div className="p-5 md:p-10 lg:p-14 space-y-6 md:space-y-12">
                         {/* Meanings & Roles Mapping */}
-                        <div className="space-y-8">
+                        <div className="space-y-4 md:space-y-8">
                             <div className="flex flex-col items-center text-center">
-                                <span className="text-gray-300 font-black text-[10px] uppercase tracking-widest mb-3 leading-none">Nghĩa và Giải thích</span>
-                                <div className="text-4xl md:text-5xl font-black text-primary mb-4 leading-tight">{(word as any).translation}</div>
-                                <p className="text-gray-500 font-medium text-lg italic max-w-lg leading-relaxed">
+                                <span className="text-gray-300 font-black text-[9px] md:text-[10px] uppercase tracking-widest mb-2 md:mb-3 leading-none">Nghĩa và Giải thích</span>
+                                <div className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-primary mb-2 md:mb-4 leading-tight break-words">{(word as any).translation}</div>
+                                <p className="text-gray-500 font-medium text-sm md:text-lg italic max-w-lg leading-relaxed break-words">
                                     {(word as any).viDefinition || word.definition}
                                 </p>
                             </div>
                         </div>
 
                         {/* Usage Example */}
-                        <div className="bg-gray-50 rounded-[2.5rem] p-8 md:p-10 border border-gray-100 relative group">
-                            <div className="absolute top-0 right-0 p-8 opacity-5 text-8xl grayscale group-hover:grayscale-0 transition-all pointer-events-none">💬</div>
-                            <h4 className="font-black text-gray-400 text-[10px] uppercase tracking-widest mb-6 leading-none flex items-center gap-2">
-                                <span className="w-4 h-px bg-gray-200"></span> Ví dụ sử dụng
+                        <div className="bg-gray-50 rounded-xl md:rounded-[2.5rem] p-4 md:p-8 lg:p-10 border border-gray-100 relative group">
+                            <div className="absolute top-0 right-0 p-4 md:p-8 opacity-5 text-4xl md:text-8xl grayscale group-hover:grayscale-0 transition-all pointer-events-none">💬</div>
+                            <h4 className="font-black text-gray-400 text-[9px] md:text-[10px] uppercase tracking-widest mb-3 md:mb-6 leading-none flex items-center gap-2">
+                                <span className="w-3 md:w-4 h-px bg-gray-200"></span> Ví dụ sử dụng
                             </h4>
-                            <div className="space-y-3">
-                                <p className="text-gray-800 font-black text-xl md:text-2xl leading-tight">"{word.example}"</p>
+                            <div className="space-y-2 md:space-y-3">
+                                <p className="text-gray-800 font-black text-base md:text-xl lg:text-2xl leading-tight break-words">"{word.example}"</p>
                                 {(word as any).viExample && (
-                                    <p className="text-gray-500 font-medium italic text-lg leading-relaxed">→ {(word as any).viExample}</p>
+                                    <p className="text-gray-500 font-medium italic text-sm md:text-lg leading-relaxed break-words">→ {(word as any).viExample}</p>
                                 )}
                             </div>
                         </div>
@@ -1097,25 +1138,27 @@ export default function Learn() {
                 </div>
 
                 {/* Navigation Controls */}
-                <div className="flex gap-4 w-full max-w-xl">
+                <div className="flex gap-2 md:gap-4 w-full max-w-xl px-2">
                     <button
                         onClick={() => nextLearningCard()}
-                        className="flex-1 py-6 bg-white border-2 border-gray-100 text-gray-400 font-black rounded-2xl hover:bg-gray-50 transition-all hover:border-gray-200 active:scale-95"
+                        className="flex-1 py-3 md:py-6 bg-white border-2 border-gray-100 text-gray-400 font-black text-sm md:text-base rounded-xl md:rounded-2xl hover:bg-gray-50 transition-all hover:border-gray-200 active:scale-95 touch-target"
                     >
                         Bỏ qua
                     </button>
                     <button
                         onClick={() => nextLearningCard()}
-                        className="flex-[2] py-6 bg-primary text-white font-black text-2xl rounded-2xl shadow-glow-primary hover:bg-primary-dark hover:-translate-y-1 transition-all active:translate-y-0"
+                        className="flex-[2] py-3 md:py-6 bg-primary text-white font-black text-base md:text-2xl rounded-xl md:rounded-2xl shadow-glow-primary hover:bg-primary-dark hover:-translate-y-1 transition-all active:translate-y-0 touch-target"
                     >
-                        Đã ghi nhớ! 🚀
+                        <span className="hidden sm:inline">Đã ghi nhớ! </span>
+                        <span className="sm:hidden">Tiếp </span>🚀
                     </button>
                 </div>
 
-                <div className="mt-10 text-gray-300 font-black text-[10px] uppercase tracking-[0.3em] flex items-center gap-4">
-                    <span className="w-10 h-px bg-gray-200"></span>
-                    LinguaFast Learning Experience
-                    <span className="w-10 h-px bg-gray-200"></span>
+                <div className="mt-6 md:mt-10 text-gray-300 font-black text-[8px] md:text-[10px] uppercase tracking-[0.2em] md:tracking-[0.3em] flex items-center gap-2 md:gap-4">
+                    <span className="w-6 md:w-10 h-px bg-gray-200"></span>
+                    <span className="hidden sm:inline">LinguaFast Learning Experience</span>
+                    <span className="sm:hidden">LinguaFast</span>
+                    <span className="w-6 md:w-10 h-px bg-gray-200"></span>
                 </div>
             </div>
         </div>

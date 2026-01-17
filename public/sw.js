@@ -1,7 +1,7 @@
 // LinguaFast Service Worker
-const CACHE_NAME = 'linguafast-v1';
-const STATIC_CACHE = 'linguafast-static-v1';
-const DYNAMIC_CACHE = 'linguafast-dynamic-v1';
+const CACHE_NAME = 'linguafast-v2'; // Bumped version to invalidate old cache
+const STATIC_CACHE = 'linguafast-static-v2';
+const DYNAMIC_CACHE = 'linguafast-dynamic-v2';
 
 // Static assets to cache
 const STATIC_ASSETS = [
@@ -56,6 +56,15 @@ self.addEventListener('fetch', (event) => {
         url.pathname.includes('logout') ||
         url.pathname.includes('login')) {
         return;
+    }
+
+    // Skip caching JavaScript and CSS files (let browser handle these with proper cache headers)
+    // This prevents stale JS causing hydration errors
+    if (url.pathname.endsWith('.js') ||
+        url.pathname.endsWith('.css') ||
+        url.pathname.includes('/@vite') ||
+        url.pathname.includes('/node_modules/')) {
+        return; // Let browser fetch directly without SW intervention
     }
 
     // For HTML pages - network first

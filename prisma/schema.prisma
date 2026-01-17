@@ -20,6 +20,7 @@ model User {
   updatedAt    DateTime @updatedAt
   
   progress           UserProgress[]
+  topicProgress      UserTopicProgress[]
   conversationTopics ConversationTopic[]
 }
 
@@ -36,6 +37,23 @@ model Topic {
   createdAt   DateTime @default(now())
   
   words       Word[]
+  userProgress UserTopicProgress[]
+}
+
+// Track user's learning status for each topic
+model UserTopicProgress {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  topicId   String   @db.ObjectId
+  
+  status    String?  // null = not set, "learning" = đang học, "completed" = đã xong
+  startedAt DateTime?
+  completedAt DateTime?
+  
+  user      User     @relation(fields: [userId], references: [id])
+  topic     Topic    @relation(fields: [topicId], references: [id])
+  
+  @@unique([userId, topicId])
 }
 
 model Word {

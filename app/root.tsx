@@ -1,3 +1,4 @@
+import React from "react";
 import {
   isRouteErrorResponse,
   Links,
@@ -55,7 +56,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         {children}
-        <Toaster position="top-center" richColors />
         <ScrollRestoration />
         <Scripts />
 
@@ -80,8 +80,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Client-only wrapper for Toaster to avoid hydration issues
+function ClientToaster() {
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+  if (!mounted) return null;
+  return <Toaster position="top-center" richColors />;
+}
+
 export default function App() {
-  return <Outlet />;
+  return (
+    <>
+      <Outlet />
+      <ClientToaster />
+    </>
+  );
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {

@@ -69,24 +69,24 @@ export default function TopicNew() {
     ];
 
     return (
-        <div className="container mx-auto px-4 py-12 max-w-3xl">
-            <div className="mb-8">
+        <div className="container mx-auto px-4 py-8 md:py-12 max-w-3xl">
+            <div className="mb-6 md:mb-8">
                 <Link to="/topics" className="text-sm font-bold text-primary flex items-center gap-2 hover:underline mb-4">
                     ← Quay lại danh sách
                 </Link>
-                <h1 className="text-4xl font-black text-gray-900 italic tracking-tighter">TẠO CHỦ ĐỀ MỚI</h1>
-                <p className="text-gray-500 font-medium">Thiết lập học phần mới để bắt đầu thêm từ vựng AI.</p>
+                <h1 className="text-3xl md:text-4xl font-black text-gray-900 italic tracking-tighter">TẠO CHỦ ĐỀ MỚI</h1>
+                <p className="text-sm md:text-base text-gray-500 font-medium my-2">Thiết lập học phần mới để bắt đầu thêm từ vựng AI.</p>
             </div>
 
-            <div className="bg-white rounded-[2.5rem] shadow-2xl border border-gray-100 overflow-hidden">
-                <Form method="post" className="p-10 space-y-8">
+            <div className="bg-white rounded-[2rem] md:rounded-[2.5rem] shadow-2xl border border-gray-100 overflow-hidden">
+                <Form method="post" className="p-6 md:p-10 space-y-6 md:space-y-8">
                     {actionData?.error && (
                         <div className="p-4 bg-red-50 border border-red-100 text-red-600 rounded-2xl font-bold text-sm">
                             {actionData.error}
                         </div>
                     )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
                         {/* English Title */}
                         <div className="space-y-2">
                             <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">Tiêu đề (English) *</label>
@@ -95,7 +95,7 @@ export default function TopicNew() {
                                 type="text"
                                 placeholder="e.g. Daily Routine"
                                 required
-                                className="w-full px-6 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-primary focus:bg-white outline-none transition-all font-bold text-gray-900"
+                                className="w-full px-5 py-3 md:px-6 md:py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-primary focus:bg-white outline-none transition-all font-bold text-gray-900 text-sm md:text-base"
                             />
                         </div>
 
@@ -106,7 +106,7 @@ export default function TopicNew() {
                                 name="viTitle"
                                 type="text"
                                 placeholder="e.g. Thói quen hàng ngày"
-                                className="w-full px-6 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-primary focus:bg-white outline-none transition-all font-bold text-gray-900"
+                                className="w-full px-5 py-3 md:px-6 md:py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-primary focus:bg-white outline-none transition-all font-bold text-gray-900 text-sm md:text-base"
                             />
                         </div>
                     </div>
@@ -118,19 +118,19 @@ export default function TopicNew() {
                             name="slug"
                             type="text"
                             placeholder="e.g. daily-routine"
-                            className="w-full px-6 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-primary focus:bg-white outline-none transition-all font-mono text-sm"
+                            className="w-full px-5 py-3 md:px-6 md:py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-primary focus:bg-white outline-none transition-all font-mono text-xs md:text-sm"
                         />
                     </div>
 
                     {/* Descriptions */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
                         <div className="space-y-2">
                             <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">Mô tả (English)</label>
                             <textarea
                                 name="description"
                                 rows={3}
                                 placeholder="Common words used in daily life..."
-                                className="w-full px-6 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-primary focus:bg-white outline-none transition-all font-medium text-gray-700"
+                                className="w-full px-5 py-3 md:px-6 md:py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-primary focus:bg-white outline-none transition-all font-medium text-gray-700 text-sm md:text-base"
                             />
                         </div>
                         <div className="space-y-2">
@@ -139,19 +139,19 @@ export default function TopicNew() {
                                 name="viDescription"
                                 rows={3}
                                 placeholder="Các từ vựng thông dụng trong đời sống..."
-                                className="w-full px-6 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-primary focus:bg-white outline-none transition-all font-medium text-gray-700"
+                                className="w-full px-5 py-3 md:px-6 md:py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-primary focus:bg-white outline-none transition-all font-medium text-gray-700 text-sm md:text-base"
                             />
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
                         {/* Level */}
                         <div className="space-y-2">
                             <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">Cấp độ *</label>
                             <select
                                 name="level"
                                 required
-                                className="w-full px-6 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-primary focus:bg-white outline-none transition-all font-bold text-gray-900 appearance-none"
+                                className="w-full px-5 py-3 md:px-6 md:py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-primary focus:bg-white outline-none transition-all font-bold text-gray-900 appearance-none text-sm md:text-base"
                             >
                                 <option value="Beginner">Cơ bản (Beginner)</option>
                                 <option value="Intermediate">Trung cấp (Intermediate)</option>
@@ -166,7 +166,7 @@ export default function TopicNew() {
                                 name="image"
                                 type="text"
                                 placeholder="e.g. 📚, ✈️, 🍔"
-                                className="w-full px-6 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-primary focus:bg-white outline-none transition-all text-2xl text-center"
+                                className="w-full px-5 py-3 md:px-6 md:py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-primary focus:bg-white outline-none transition-all text-xl md:text-2xl text-center"
                             />
                         </div>
                     </div>
@@ -178,16 +178,16 @@ export default function TopicNew() {
                             {gradients.map((g) => (
                                 <label key={g} className="relative cursor-pointer group">
                                     <input type="radio" name="color" value={g} className="peer sr-only" defaultChecked={g === gradients[0]} />
-                                    <div className={`h-12 w-full rounded-xl bg-gradient-to-br ${g} ring-offset-2 peer-checked:ring-4 ring-primary transition-all group-hover:scale-105`}></div>
+                                    <div className={`h-10 w-full md:h-12 rounded-xl bg-gradient-to-br ${g} ring-offset-2 peer-checked:ring-4 ring-primary transition-all group-hover:scale-105`}></div>
                                 </label>
                             ))}
                         </div>
                     </div>
 
-                    <div className="pt-6">
+                    <div className="pt-4 md:pt-6">
                         <button
                             type="submit"
-                            className="w-full py-5 bg-primary text-white font-black text-xl rounded-[1.5rem] shadow-glow-primary hover:bg-primary-dark hover:-translate-y-1 transition-all active:translate-y-0"
+                            className="w-full py-4 md:py-5 bg-primary text-white font-black text-lg md:text-xl rounded-xl md:rounded-[1.5rem] shadow-glow-primary hover:bg-primary-dark hover:-translate-y-1 transition-all active:translate-y-0"
                         >
                             TẠO CHỦ ĐỀ NGAY 🚀
                         </button>

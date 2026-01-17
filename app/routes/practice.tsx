@@ -384,15 +384,46 @@ export default function Practice() {
     // State for moving phrase to vocabulary topic
     const [movePhrase, setMovePhrase] = useState<any | null>(null);
     const [selectedVocabTopicId, setSelectedVocabTopicId] = useState<string>("");
+    // Search and filter state
+    const [searchQuery, setSearchQuery] = useState("");
+    // Pagination state for conversations and phrases
+    const [conversationsPage, setConversationsPage] = useState(1);
+    const [phrasesPage, setPhrasesPage] = useState(1);
+    const ITEMS_PER_PAGE = 10;
 
     const isLoading = fetcher.state !== "idle";
+
+    // Filter topics based on search query
+    const filteredTopics = topics.filter((topic: any) => {
+        if (!searchQuery.trim()) return true;
+        const query = searchQuery.toLowerCase().trim();
+        return topic.title.toLowerCase().includes(query) ||
+            (topic.description && topic.description.toLowerCase().includes(query));
+    });
+
     const selectedTopic = topics.find((t: any) => t.id === selectedTopicId);
     const selectedConversation = selectedTopic?.conversations.find((c: any) => c.id === selectedConversationId);
 
     // Get phrases to display - either from selected conversation or all from topic
-    const displayPhrases = selectedConversation
+    const allDisplayPhrases = selectedConversation
         ? selectedConversation.phrases
         : selectedTopic?.phrases || [];
+
+    // Paginated conversations
+    const allConversations = selectedTopic?.conversations || [];
+    const paginatedConversations = allConversations.slice(0, conversationsPage * ITEMS_PER_PAGE);
+    const hasMoreConversations = paginatedConversations.length < allConversations.length;
+
+    // Paginated phrases (after filtering by ignored status)
+    const filteredPhrases = allDisplayPhrases.filter((p: any) => showIgnored || !p.isIgnored);
+    const paginatedPhrases = filteredPhrases.slice(0, phrasesPage * ITEMS_PER_PAGE);
+    const hasMorePhrases = paginatedPhrases.length < filteredPhrases.length;
+
+    // Reset pagination when topic or conversation changes
+    useEffect(() => {
+        setConversationsPage(1);
+        setPhrasesPage(1);
+    }, [selectedTopicId, selectedConversationId]);
 
     // Text-to-speech for English
     const speakEnglish = (text: string) => {
@@ -498,12 +529,17 @@ export default function Practice() {
     };
 
     const handleSelectConversation = (conv: any) => {
-        setSelectedConversationId(conv.id);
-        setCurrentResult({
-            englishText: conv.englishText,
-            phrases: conv.phrases
-        });
-        speakEnglish(conv.englishText);
+        if (selectedConversationId === conv.id) {
+            setSelectedConversationId(null);
+            setCurrentResult(null);
+        } else {
+            setSelectedConversationId(conv.id);
+            setCurrentResult({
+                englishText: conv.englishText,
+                phrases: conv.phrases
+            });
+            speakEnglish(conv.englishText);
+        }
     };
 
     return (
@@ -513,8 +549,8 @@ export default function Practice() {
                 <div className="container mx-auto px-4">
                     <div className="flex items-center justify-between gap-4">
                         <div className="flex-1 min-w-0">
-                            <h1 className="text-xl sm:text-2xl md:text-4xl font-black mb-1 md:mb-2 truncate">🎤 Hội thoại</h1>
-                            <p className="text-white/80 font-medium text-xs sm:text-sm md:text-base truncate">
+                            <h1 className="text-xl sm:text-2xl md:text-4xl font-black mb-1 md:mb-2 break-words">🎤 Hội thoại</h1>
+                            <p className="text-white/80 font-medium text-xs sm:text-sm md:text-base break-words">
                                 Nói tiếng Việt → Học tiếng Anh
                             </p>
                         </div>
@@ -540,38 +576,61 @@ export default function Practice() {
                             ➕
                         </button>
                     </div>
-                    <div className="flex gap-2 overflow-x-auto pb-2 -mx-3 px-3 scrollbar-hide">
-                        {topics.length === 0 ? (
+                    {/* Mobile Search */}
+                    <div className="relative mb-3">
+                        <input
+                            type="text"
+                            placeholder="Tìm chủ đề..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full pl-10 pr-8 py-2 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 text-sm focus:outline-none focus:bg-white/20 transition-all"
+                        />
+                        <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                        {searchQuery && (
                             <button
-                                onClick={() => setShowNewTopicModal(true)}
-                                className="flex-shrink-0 px-4 py-2 bg-white/10 text-white rounded-xl text-sm font-medium"
+                                onClick={() => setSearchQuery("")}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
                             >
-                                + Tạo chủ đề đầu tiên
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
                             </button>
-                        ) : (
-                            topics.map((topic: any) => (
-                                <button
-                                    key={topic.id}
-                                    onClick={() => {
-                                        setSelectedTopicId(topic.id);
-                                        setSelectedConversationId(null);
-                                        setCurrentResult(null);
-                                    }}
-                                    className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold transition-all ${selectedTopicId === topic.id
-                                        ? "bg-white text-emerald-600 shadow-lg"
-                                        : "bg-white/10 text-white hover:bg-white/20"
-                                        }`}
-                                >
-                                    <span>{topic.icon || "💬"}</span>
-                                    <span className="truncate max-w-[100px]">{topic.title}</span>
-                                    <span className="text-xs opacity-60">{topic.conversations.length}</span>
-                                </button>
-                            ))
                         )}
+                    </div>
+                    {/* Wrap with overflow-hidden to contain negative margins */}
+                    <div className="overflow-hidden">
+                        <div className="flex gap-2 overflow-x-auto pb-2 -mx-3 px-3 scrollbar-hide">
+                            {filteredTopics.length === 0 ? (
+                                <div className="flex-shrink-0 px-4 py-2 bg-white/10 text-white rounded-xl text-sm font-medium">
+                                    {searchQuery ? "Không tìm thấy kết quả" : "+ Tạo chủ đề đầu tiên"}
+                                </div>
+                            ) : (
+                                filteredTopics.map((topic: any) => (
+                                    <button
+                                        key={topic.id}
+                                        onClick={() => {
+                                            setSelectedTopicId(topic.id);
+                                            setSelectedConversationId(null);
+                                            setCurrentResult(null);
+                                        }}
+                                        className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold transition-all ${selectedTopicId === topic.id
+                                            ? "bg-white text-emerald-600 shadow-lg"
+                                            : "bg-white/10 text-white hover:bg-white/20"
+                                            }`}
+                                    >
+                                        <span>{topic.icon || "💬"}</span>
+                                        <span className="whitespace-nowrap">{topic.title}</span>
+                                        <span className="text-xs opacity-60">{topic.conversations.length}</span>
+                                    </button>
+                                ))
+                            )}
+                        </div>
                     </div>
                 </div>
 
-                <div className="grid lg:grid-cols-4 gap-4 md:gap-8">
+                <div className="grid lg:grid-cols-4 gap-4 md:gap-8 overflow-hidden">
                     {/* Topics sidebar - Hidden on mobile, shown on lg+ */}
                     <div className="hidden lg:block lg:col-span-1">
                         <div className="bg-white rounded-3xl shadow-2xl overflow-hidden sticky top-4">
@@ -586,24 +645,57 @@ export default function Practice() {
                                         ➕
                                     </button>
                                 </div>
-                                <p className="text-gray-500 text-sm">{topics.length} chủ đề</p>
+                                <p className="text-gray-500 text-sm mb-3">{topics.length} chủ đề</p>
+
+                                {/* Desktop Search */}
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        placeholder="Tìm kiếm..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                                    />
+                                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                    </svg>
+                                    {searchQuery && (
+                                        <button
+                                            onClick={() => setSearchQuery("")}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                        >
+                                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    )}
+                                </div>
+                                {searchQuery && (
+                                    <p className="text-xs text-gray-500 mt-2">
+                                        Tìm thấy <span className="font-bold text-emerald-600">{filteredTopics.length}</span> kết quả
+                                    </p>
+                                )}
                             </div>
 
-                            <div className="max-h-[500px] overflow-y-auto">
-                                {topics.length === 0 ? (
+                            <div className="max-h-[400px] overflow-y-auto">
+                                {filteredTopics.length === 0 ? (
                                     <div className="p-8 text-center">
-                                        <div className="text-4xl mb-3">📂</div>
-                                        <p className="text-gray-400 text-sm mb-4">Chưa có chủ đề nào</p>
-                                        <button
-                                            onClick={() => setShowNewTopicModal(true)}
-                                            className="px-4 py-2 bg-emerald-500 text-white rounded-lg font-bold hover:bg-emerald-600 transition-all"
-                                        >
-                                            Tạo chủ đề đầu tiên
-                                        </button>
+                                        <div className="text-4xl mb-3">{searchQuery ? "🔍" : "📂"}</div>
+                                        <p className="text-gray-400 text-sm mb-4">
+                                            {searchQuery ? "Không tìm thấy chủ đề phù hợp" : "Chưa có chủ đề nào"}
+                                        </p>
+                                        {!searchQuery && (
+                                            <button
+                                                onClick={() => setShowNewTopicModal(true)}
+                                                className="px-4 py-2 bg-emerald-500 text-white rounded-lg font-bold hover:bg-emerald-600 transition-all"
+                                            >
+                                                Tạo chủ đề đầu tiên
+                                            </button>
+                                        )}
                                     </div>
                                 ) : (
                                     <div className="divide-y divide-gray-50">
-                                        {topics.map((topic: any) => (
+                                        {filteredTopics.map((topic: any) => (
                                             <div
                                                 key={topic.id}
                                                 className={`p-4 cursor-pointer transition-all ${selectedTopicId === topic.id
@@ -647,9 +739,9 @@ export default function Practice() {
                     </div>
 
                     {/* Main practice area */}
-                    <div className="lg:col-span-3 space-y-6">
+                    <div className="lg:col-span-3 space-y-4 md:space-y-6 min-w-0 overflow-hidden">
                         {!selectedTopicId ? (
-                            <div className="bg-white rounded-3xl shadow-2xl p-12 text-center">
+                            <div className="bg-white rounded-2xl md:rounded-3xl shadow-2xl p-6 md:p-12 text-center overflow-hidden">
                                 <div className="text-6xl mb-4">👈</div>
                                 <h2 className="text-2xl font-black text-gray-900 mb-2">Chọn một chủ đề</h2>
                                 <p className="text-gray-500 mb-6">
@@ -665,13 +757,13 @@ export default function Practice() {
                         ) : (
                             <>
                                 {/* Current topic info */}
-                                <div className={`bg-gradient-to-r ${selectedTopic?.color || 'from-emerald-500 to-teal-600'} rounded-3xl p-6 text-white`}>
+                                <div className={`bg-gradient-to-r ${selectedTopic?.color || 'from-emerald-500 to-teal-600'} rounded-2xl md:rounded-3xl p-4 md:p-6 text-white overflow-hidden`}>
                                     <div className="flex items-center gap-3 mb-2">
                                         <span className="text-2xl md:text-3xl">{selectedTopic?.icon || "💬"}</span>
-                                        <h2 className="text-lg md:text-2xl font-black truncate">{selectedTopic?.title}</h2>
+                                        <h2 className="text-lg md:text-2xl font-black break-words">{selectedTopic?.title}</h2>
                                     </div>
                                     {selectedTopic?.description && (
-                                        <p className="text-white/80 text-sm md:text-base line-clamp-2">{selectedTopic.description}</p>
+                                        <p className="text-white/80 text-sm md:text-base break-words">{selectedTopic.description}</p>
                                     )}
                                     <div className="flex flex-wrap gap-2 mt-3 md:mt-4 text-xs md:text-sm">
                                         <span className="bg-white/20 px-2 md:px-3 py-1 rounded-full">
@@ -758,7 +850,7 @@ export default function Practice() {
                                             <div className="flex items-start justify-between gap-3">
                                                 <div className="flex-1 min-w-0">
                                                     <p className="text-white/60 text-[10px] md:text-xs font-bold uppercase tracking-wider mb-1 md:mb-2">Tiếng Anh</p>
-                                                    <p className="text-2xl font-black text-white leading-relaxed">
+                                                    <p className="text-lg md:text-2xl font-black text-white leading-relaxed break-words">
                                                         {currentResult.englishText}
                                                     </p>
                                                 </div>
@@ -778,33 +870,35 @@ export default function Practice() {
                                                     ({currentResult.phrases.length} từ/cụm)
                                                 </span>
                                             </h3>
-                                            <div className="space-y-4">
+                                            <div className="space-y-3 md:space-y-4">
                                                 {currentResult.phrases.map((phrase, index) => (
                                                     <div
                                                         key={index}
-                                                        className="p-4 bg-gray-50 rounded-xl border-2 border-gray-100"
+                                                        className="p-3 md:p-4 bg-gray-50 rounded-xl border-2 border-gray-100"
                                                     >
-                                                        <div className="flex items-start justify-between mb-2">
-                                                            <div className="flex items-center gap-3">
-                                                                <h4 className="text-xl font-black text-gray-900">{phrase.english}</h4>
-                                                                <span className="text-gray-400 font-medium">{phrase.phonetic}</span>
-                                                                <span className="px-2 py-0.5 bg-indigo-100 text-indigo-600 text-xs font-bold rounded-full">
-                                                                    {phrase.partOfSpeech}
-                                                                </span>
+                                                        <div className="flex items-start justify-between gap-2 mb-2">
+                                                            <div className="min-w-0 flex-1">
+                                                                <div className="flex flex-wrap items-center gap-1 md:gap-2 mb-1">
+                                                                    <h4 className="text-base md:text-xl font-black text-gray-900 break-words">{phrase.english}</h4>
+                                                                    <span className="px-1.5 md:px-2 py-0.5 bg-indigo-100 text-indigo-600 text-[10px] md:text-xs font-bold rounded-full shrink-0">
+                                                                        {phrase.partOfSpeech}
+                                                                    </span>
+                                                                </div>
+                                                                <span className="text-gray-400 font-medium text-xs md:text-sm">{phrase.phonetic}</span>
                                                             </div>
                                                             <button
                                                                 onClick={() => speakEnglish(phrase.english)}
-                                                                className="p-2 hover:bg-gray-200 rounded-lg transition-all"
+                                                                className="p-1.5 md:p-2 hover:bg-gray-200 rounded-lg transition-all shrink-0 touch-target"
                                                             >
                                                                 🔊
                                                             </button>
                                                         </div>
-                                                        <p className="text-emerald-600 font-bold mb-2">{phrase.vietnamese}</p>
+                                                        <p className="text-emerald-600 font-bold text-sm md:text-base mb-2">{phrase.vietnamese}</p>
                                                         {phrase.example && (
-                                                            <div className="mt-2 pl-3 border-l-2 border-gray-200">
-                                                                <p className="text-gray-600 text-sm italic">"{phrase.example}"</p>
+                                                            <div className="mt-2 pl-2 md:pl-3 border-l-2 border-gray-200">
+                                                                <p className="text-gray-600 text-xs md:text-sm italic break-words">"{phrase.example}"</p>
                                                                 {phrase.viExample && (
-                                                                    <p className="text-gray-400 text-xs mt-1">→ {phrase.viExample}</p>
+                                                                    <p className="text-gray-400 text-[10px] md:text-xs mt-1 break-words">→ {phrase.viExample}</p>
                                                                 )}
                                                             </div>
                                                         )}
@@ -816,126 +910,280 @@ export default function Practice() {
                                 )}
 
                                 {/* Topic's conversation history & phrases - Mobile stack, desktop grid */}
-                                {selectedTopic && (selectedTopic.conversations.length > 0 || selectedTopic.phrases.length > 0) && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                                        {/* Conversations */}
-                                        <div className="bg-white rounded-2xl md:rounded-3xl shadow-2xl overflow-hidden">
-                                            <div className="p-4 md:p-6 border-b border-gray-100">
-                                                <h3 className="text-base md:text-lg font-black text-gray-900">💬 Lịch sử</h3>
-                                                <p className="text-gray-500 text-xs md:text-sm">
-                                                    {selectedTopic.conversations.length} câu
-                                                    {selectedConversationId && " • Click để xem từ vựng"}
-                                                </p>
+                                {selectedTopic && (allConversations.length > 0 || selectedTopic.phrases.length > 0) && (
+                                    <>
+                                        {/* Desktop layout - 2 columns */}
+                                        <div className="hidden md:grid md:grid-cols-2 gap-6">
+                                            {/* Conversations */}
+                                            <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
+                                                <div className="p-6 border-b border-gray-100">
+                                                    <h3 className="text-lg font-black text-gray-900">💬 Lịch sử</h3>
+                                                    <p className="text-gray-500 text-sm">
+                                                        {allConversations.length} câu
+                                                        {allConversations.length > ITEMS_PER_PAGE && ` • Hiển ${paginatedConversations.length}/${allConversations.length}`}
+                                                        {selectedConversationId && " • Click để xem từ vựng"}
+                                                    </p>
+                                                </div>
+                                                <div className="max-h-[400px] overflow-y-auto">
+                                                    <div className="divide-y divide-gray-50">
+                                                        {paginatedConversations.map((conv: any) => (
+                                                            <button
+                                                                key={conv.id}
+                                                                onClick={() => handleSelectConversation(conv)}
+                                                                className={`w-full p-4 text-left transition-all active:bg-gray-100 ${selectedConversationId === conv.id
+                                                                    ? "bg-indigo-50 border-l-4 border-indigo-500"
+                                                                    : "hover:bg-gray-50"
+                                                                    }`}
+                                                            >
+                                                                <p className="text-gray-600 font-medium text-sm break-words mb-1">
+                                                                    🇻🇳 {conv.vietnameseText}
+                                                                </p>
+                                                                <p className="text-gray-900 font-bold text-base break-words">
+                                                                    🇺🇸 {conv.englishText}
+                                                                </p>
+                                                                <p className="text-gray-400 text-xs mt-1">
+                                                                    {conv.phrases?.length || 0} từ
+                                                                </p>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    {hasMoreConversations && (
+                                                        <div className="p-3 border-t border-gray-100">
+                                                            <button
+                                                                onClick={() => setConversationsPage(prev => prev + 1)}
+                                                                className="w-full py-2 text-sm font-bold text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                                            >
+                                                                Tải thêm {Math.min(ITEMS_PER_PAGE, allConversations.length - paginatedConversations.length)} câu nữa...
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
-                                            <div className="max-h-[300px] md:max-h-[400px] overflow-y-auto divide-y divide-gray-50">
-                                                {selectedTopic.conversations.map((conv: any) => (
-                                                    <button
-                                                        key={conv.id}
-                                                        onClick={() => handleSelectConversation(conv)}
-                                                        className={`w-full p-3 md:p-4 text-left transition-all active:bg-gray-100 ${selectedConversationId === conv.id
-                                                            ? "bg-indigo-50 border-l-4 border-indigo-500"
-                                                            : "hover:bg-gray-50"
-                                                            }`}
-                                                    >
-                                                        <p className="text-gray-600 font-medium text-xs md:text-sm truncate mb-0.5 md:mb-1">
-                                                            🇻🇳 {conv.vietnameseText}
-                                                        </p>
-                                                        <p className="text-gray-900 font-bold text-sm md:text-base truncate">
-                                                            🇺🇸 {conv.englishText}
-                                                        </p>
-                                                        <p className="text-gray-400 text-[10px] md:text-xs mt-1">
-                                                            {conv.phrases?.length || 0} từ
-                                                        </p>
-                                                    </button>
-                                                ))}
+
+                                            {/* Phrases display - Desktop */}
+                                            <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
+                                                <div className="p-6 border-b border-gray-100">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <div className="min-w-0">
+                                                            <h3 className="text-lg font-black text-gray-900 truncate">
+                                                                📚 {selectedConversationId ? "Từ vựng câu" : "Tất cả từ vựng"}
+                                                            </h3>
+                                                            <p className="text-gray-500 text-sm">
+                                                                {allDisplayPhrases.filter((p: any) => !p.isIgnored).length} từ
+                                                                {filteredPhrases.length > ITEMS_PER_PAGE && ` • Hiển ${paginatedPhrases.length}/${filteredPhrases.length}`}
+                                                            </p>
+                                                        </div>
+                                                        <label className="flex items-center gap-2 text-sm shrink-0">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={showIgnored}
+                                                                onChange={(e) => setShowIgnored(e.target.checked)}
+                                                                className="rounded w-4 h-4"
+                                                            />
+                                                            <span className="text-gray-500">Hiện đã ẩn</span>
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div className="max-h-[400px] overflow-y-auto">
+                                                    {allDisplayPhrases.length === 0 ? (
+                                                        <div className="p-8 text-center">
+                                                            <div className="text-4xl mb-3">📝</div>
+                                                            <p className="text-gray-400 text-sm">
+                                                                {selectedConversationId
+                                                                    ? "Chưa có từ vựng"
+                                                                    : "Chưa có từ vựng nào"
+                                                                }
+                                                            </p>
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            <div className="divide-y divide-gray-50">
+                                                                {paginatedPhrases.map((phrase: any) => (
+                                                                    <div
+                                                                        key={phrase.id}
+                                                                        className={`p-4 ${phrase.isIgnored ? 'opacity-50' : ''}`}
+                                                                    >
+                                                                        <div className="flex items-start justify-between gap-2">
+                                                                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                                                <button
+                                                                                    onClick={() => speakEnglish(phrase.english)}
+                                                                                    className="text-lg hover:scale-110 transition-transform shrink-0"
+                                                                                >
+                                                                                    🔊
+                                                                                </button>
+                                                                                <div className="min-w-0">
+                                                                                    <span className="font-bold text-gray-900">{phrase.english}</span>
+                                                                                    <span className="text-gray-400 text-sm ml-1">{phrase.phonetic}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="flex items-center gap-2 shrink-0">
+                                                                                <button
+                                                                                    onClick={() => setMovePhrase(phrase)}
+                                                                                    className="text-xs px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-all"
+                                                                                    title="Lưu"
+                                                                                >
+                                                                                    📥 Lưu
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => {
+                                                                                        fetcher.submit(
+                                                                                            { intent: "toggle-phrase-ignore", phraseId: phrase.id },
+                                                                                            { method: "post" }
+                                                                                        );
+                                                                                    }}
+                                                                                    className="text-xs text-gray-400 hover:text-gray-600 px-1"
+                                                                                >
+                                                                                    {phrase.isIgnored ? "👁️" : "🙈"}
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                        <p className="text-emerald-600 text-sm mt-1 pl-8">{phrase.vietnamese}</p>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                            {hasMorePhrases && (
+                                                                <div className="p-3 border-t border-gray-100">
+                                                                    <button
+                                                                        onClick={() => setPhrasesPage(prev => prev + 1)}
+                                                                        className="w-full py-2 text-sm font-bold text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                                                                    >
+                                                                        Tải thêm {Math.min(ITEMS_PER_PAGE, filteredPhrases.length - paginatedPhrases.length)} từ nữa...
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
 
-                                        {/* Phrases display - Mobile optimized */}
-                                        <div className="bg-white rounded-2xl md:rounded-3xl shadow-2xl overflow-hidden">
-                                            <div className="p-4 md:p-6 border-b border-gray-100">
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <div className="min-w-0">
-                                                        <h3 className="text-base md:text-lg font-black text-gray-900 truncate">
-                                                            📚 {selectedConversationId ? "Từ vựng câu" : "Tất cả từ vựng"}
-                                                        </h3>
-                                                        <p className="text-gray-500 text-xs md:text-sm">
-                                                            {displayPhrases.filter((p: any) => !p.isIgnored).length} từ
-                                                        </p>
-                                                    </div>
-                                                    <label className="flex items-center gap-1.5 md:gap-2 text-xs md:text-sm shrink-0">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={showIgnored}
-                                                            onChange={(e) => setShowIgnored(e.target.checked)}
-                                                            className="rounded w-4 h-4"
-                                                        />
-                                                        <span className="text-gray-500 hidden sm:inline">Hiện đã ẩn</span>
-                                                        <span className="text-gray-500 sm:hidden">Ẩn</span>
-                                                    </label>
-                                                </div>
+                                        {/* Mobile layout - Accordion style */}
+                                        <div className="md:hidden bg-white rounded-2xl shadow-2xl overflow-hidden">
+                                            <div className="p-4 border-b border-gray-100">
+                                                <h3 className="text-base font-black text-gray-900">💬 Lịch sử hội thoại</h3>
+                                                <p className="text-gray-500 text-xs">
+                                                    {allConversations.length} câu • Nhấn để xem từ vựng
+                                                </p>
                                             </div>
-                                            <div className="max-h-[300px] md:max-h-[400px] overflow-y-auto divide-y divide-gray-50">
-                                                {displayPhrases.length === 0 ? (
-                                                    <div className="p-6 md:p-8 text-center">
-                                                        <div className="text-3xl md:text-4xl mb-2 md:mb-3">📝</div>
-                                                        <p className="text-gray-400 text-xs md:text-sm">
-                                                            {selectedConversationId
-                                                                ? "Chưa có từ vựng"
-                                                                : "Chưa có từ vựng nào"
-                                                            }
-                                                        </p>
-                                                    </div>
-                                                ) : (
-                                                    displayPhrases
-                                                        .filter((p: any) => showIgnored || !p.isIgnored)
-                                                        .map((phrase: any) => (
-                                                            <div
-                                                                key={phrase.id}
-                                                                className={`p-3 md:p-4 ${phrase.isIgnored ? 'opacity-50' : ''}`}
+                                            <div className="max-h-[60vh] overflow-y-auto">
+                                                <div className="divide-y divide-gray-100">
+                                                    {paginatedConversations.map((conv: any) => (
+                                                        <div key={conv.id}>
+                                                            {/* Conversation header - clickable */}
+                                                            <button
+                                                                onClick={() => handleSelectConversation(conv)}
+                                                                className={`w-full p-3 text-left transition-all ${selectedConversationId === conv.id
+                                                                    ? "bg-indigo-50 border-l-4 border-indigo-500"
+                                                                    : "hover:bg-gray-50 active:bg-gray-100"
+                                                                    }`}
                                                             >
                                                                 <div className="flex items-start justify-between gap-2">
-                                                                    <div className="flex items-center gap-1.5 md:gap-2 min-w-0 flex-1">
-                                                                        <button
-                                                                            onClick={() => speakEnglish(phrase.english)}
-                                                                            className="text-base md:text-lg hover:scale-110 transition-transform shrink-0 touch-target"
-                                                                        >
-                                                                            🔊
-                                                                        </button>
-                                                                        <div className="min-w-0">
-                                                                            <span className="font-bold text-gray-900 text-sm md:text-base">{phrase.english}</span>
-                                                                            <span className="text-gray-400 text-xs md:text-sm ml-1">{phrase.phonetic}</span>
-                                                                        </div>
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <p className="text-gray-600 font-medium text-xs mb-1 break-words">
+                                                                            🇻🇳 {conv.vietnameseText}
+                                                                        </p>
+                                                                        <p className="text-gray-900 font-bold text-sm break-words">
+                                                                            🇺🇸 {conv.englishText}
+                                                                        </p>
                                                                     </div>
-                                                                    <div className="flex items-center gap-1 md:gap-2 shrink-0">
-                                                                        <button
-                                                                            onClick={() => setMovePhrase(phrase)}
-                                                                            className="text-[10px] md:text-xs px-1.5 md:px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 active:bg-blue-200 rounded-lg transition-all"
-                                                                            title="Lưu"
-                                                                        >
-                                                                            <span className="hidden sm:inline">📥 Lưu</span>
-                                                                            <span className="sm:hidden">📥</span>
-                                                                        </button>
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                fetcher.submit(
-                                                                                    { intent: "toggle-phrase-ignore", phraseId: phrase.id },
-                                                                                    { method: "post" }
-                                                                                );
-                                                                            }}
-                                                                            className="text-[10px] md:text-xs text-gray-400 hover:text-gray-600 px-1"
-                                                                        >
-                                                                            {phrase.isIgnored ? "👁️" : "🙈"}
-                                                                        </button>
+                                                                    <div className="flex items-center gap-1 shrink-0 mt-1">
+                                                                        <span className="text-[10px] text-gray-400">{conv.phrases?.length || 0} từ</span>
+                                                                        <span className={`text-gray-400 transition-transform text-xs ${selectedConversationId === conv.id ? "rotate-180" : ""}`}>
+                                                                            ▼
+                                                                        </span>
                                                                     </div>
                                                                 </div>
-                                                                <p className="text-emerald-600 text-xs md:text-sm mt-0.5 md:mt-1 pl-6 md:pl-8">{phrase.vietnamese}</p>
-                                                            </div>
-                                                        ))
+                                                            </button>
+
+                                                            {/* Inline vocabulary - shown when selected */}
+                                                            {selectedConversationId === conv.id && conv.phrases && conv.phrases.length > 0 && (
+                                                                <div className="bg-emerald-50/50 border-l-4 border-emerald-400">
+                                                                    <div className="p-2 bg-emerald-100/50 flex items-center justify-between">
+                                                                        <span className="text-xs font-bold text-emerald-700">📚 Từ vựng ({conv.phrases.length})</span>
+                                                                        <label className="flex items-center gap-1 text-[10px]">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={showIgnored}
+                                                                                onChange={(e) => setShowIgnored(e.target.checked)}
+                                                                                className="rounded w-3 h-3"
+                                                                            />
+                                                                            <span className="text-emerald-600">Hiện ẩn</span>
+                                                                        </label>
+                                                                    </div>
+                                                                    <div className="divide-y divide-emerald-100/50">
+                                                                        {conv.phrases
+                                                                            .filter((p: any) => showIgnored || !p.isIgnored)
+                                                                            .slice(0, phrasesPage * ITEMS_PER_PAGE)
+                                                                            .map((phrase: any) => (
+                                                                                <div
+                                                                                    key={phrase.id}
+                                                                                    className={`p-2.5 ${phrase.isIgnored ? 'opacity-50' : ''}`}
+                                                                                >
+                                                                                    <div className="flex items-start justify-between gap-2">
+                                                                                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                                                                            <button
+                                                                                                onClick={() => speakEnglish(phrase.english)}
+                                                                                                className="text-sm hover:scale-110 transition-transform shrink-0 touch-target"
+                                                                                            >
+                                                                                                🔊
+                                                                                            </button>
+                                                                                            <div className="min-w-0">
+                                                                                                <span className="font-bold text-gray-900 text-sm">{phrase.english}</span>
+                                                                                                <span className="text-gray-400 text-xs ml-1">{phrase.phonetic}</span>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div className="flex items-center gap-1 shrink-0">
+                                                                                            <button
+                                                                                                onClick={() => setMovePhrase(phrase)}
+                                                                                                className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded transition-all"
+                                                                                            >
+                                                                                                📥
+                                                                                            </button>
+                                                                                            <button
+                                                                                                onClick={() => {
+                                                                                                    fetcher.submit(
+                                                                                                        { intent: "toggle-phrase-ignore", phraseId: phrase.id },
+                                                                                                        { method: "post" }
+                                                                                                    );
+                                                                                                }}
+                                                                                                className="text-[10px] text-gray-400 hover:text-gray-600 px-1"
+                                                                                            >
+                                                                                                {phrase.isIgnored ? "👁️" : "🙈"}
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <p className="text-emerald-600 text-xs mt-0.5 pl-5">{phrase.vietnamese}</p>
+                                                                                </div>
+                                                                            ))}
+                                                                    </div>
+                                                                    {conv.phrases.filter((p: any) => showIgnored || !p.isIgnored).length > phrasesPage * ITEMS_PER_PAGE && (
+                                                                        <div className="p-2 border-t border-emerald-100">
+                                                                            <button
+                                                                                onClick={() => setPhrasesPage(prev => prev + 1)}
+                                                                                className="w-full py-1.5 text-xs font-bold text-emerald-600 hover:bg-emerald-100 rounded transition-all"
+                                                                            >
+                                                                                Xem thêm từ...
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                {hasMoreConversations && (
+                                                    <div className="p-3 border-t border-gray-100">
+                                                        <button
+                                                            onClick={() => setConversationsPage(prev => prev + 1)}
+                                                            className="w-full py-2 text-sm font-bold text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                                        >
+                                                            Tải thêm {Math.min(ITEMS_PER_PAGE, allConversations.length - paginatedConversations.length)} câu nữa...
+                                                        </button>
+                                                    </div>
                                                 )}
                                             </div>
                                         </div>
-                                    </div>
+                                    </>
                                 )}
                             </>
                         )}
@@ -1021,7 +1269,7 @@ export default function Practice() {
                     <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-md overflow-hidden max-h-[85vh] overflow-y-auto animate-slideUp">
                         <div className="p-4 md:p-6 border-b border-gray-100 sticky top-0 bg-white">
                             <h2 className="text-lg md:text-xl font-black text-gray-900">📥 Lưu vào bộ từ vựng</h2>
-                            <p className="text-gray-500 text-xs md:text-sm truncate">Lưu "{movePhrase.english}"</p>
+                            <p className="text-gray-500 text-xs md:text-sm break-words">Lưu "{movePhrase.english}"</p>
                         </div>
 
                         <div className="p-4 md:p-6 space-y-4">
