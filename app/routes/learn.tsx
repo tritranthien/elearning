@@ -404,7 +404,7 @@ export default function Learn() {
     // Initialize spelling letters when entering or changing word in spelling phase
     const initSpelling = (index: number) => {
         const word = activeWords[index].term.toUpperCase();
-        const letters = word.split("").map(char => ({ char, isPicked: false })).sort(() => 0.5 - Math.random());
+        const letters = word.replace(/\s/g, "").split("").map(char => ({ char, isPicked: false })).sort(() => 0.5 - Math.random());
         setShuffledLetters(letters);
         setSpelledWord([]);
         setSpellingIndex(index);
@@ -436,7 +436,8 @@ export default function Learn() {
     const handleSpellingLetter = (char: string, index: number) => {
         if (shuffledLetters[index].isPicked) return;
 
-        const targetWord = words[spellingIndex].term.toUpperCase();
+        const targetWord = activeWords[spellingIndex].term.toUpperCase();
+        const targetWordNoSpaces = targetWord.replace(/\s/g, "");
         const nextSpelled = [...spelledWord, { char, originalIndex: index }];
 
         const newShuffled = [...shuffledLetters];
@@ -447,12 +448,12 @@ export default function Learn() {
 
         const currentSpelledStr = nextSpelled.map(s => s.char).join("");
 
-        if (currentSpelledStr.length === targetWord.length) {
-            if (currentSpelledStr === targetWord) {
+        if (currentSpelledStr.length === targetWordNoSpaces.length) {
+            if (currentSpelledStr === targetWordNoSpaces) {
                 // Correct!
-                speak(words[spellingIndex].term);
+                speak(activeWords[spellingIndex].term);
                 setTimeout(() => {
-                    if (spellingIndex < words.length - 1) {
+                    if (spellingIndex < activeWords.length - 1) {
                         initSpelling(spellingIndex + 1);
                     } else {
                         setPhase("completed");
@@ -481,9 +482,10 @@ export default function Learn() {
     };
 
     const showAnswer = () => {
-        const term = words[spellingIndex].term;
+        const term = activeWords[spellingIndex].term;
         const targetWord = term.toUpperCase();
-        const letters = targetWord.split("").map(char => ({ char, originalIndex: -1 }));
+        const targetWordNoSpaces = targetWord.replace(/\s/g, "");
+        const letters = targetWordNoSpaces.split("").map(char => ({ char, originalIndex: -1 }));
         setSpelledWord(letters);
         // Mark all as picked
         setShuffledLetters(shuffledLetters.map(l => ({ ...l, isPicked: true })));
@@ -491,7 +493,7 @@ export default function Learn() {
         speak(term);
 
         setTimeout(() => {
-            if (spellingIndex < words.length - 1) {
+            if (spellingIndex < activeWords.length - 1) {
                 initSpelling(spellingIndex + 1);
             } else {
                 setPhase("completed");
@@ -776,7 +778,7 @@ export default function Learn() {
                             </button>
                         </div>
                         <span className="font-black text-xs uppercase tracking-widest">
-                            {matchedCount} / {words.length} cặp đã xong
+                            {matchedCount} / {activeWords.length} cặp đã xong
                         </span>
                     </div>
 
@@ -828,7 +830,7 @@ export default function Learn() {
                         })}
                     </div>
 
-                    {matchedCount === words.length && (
+                    {matchedCount === activeWords.length && (
                         <div className="mt-12 text-green-400 font-black flex items-center gap-2 animate-pulse">
                             🎉 Tuyệt vời! Bạn đã ghép đúng tất cả.
                         </div>
@@ -839,12 +841,13 @@ export default function Learn() {
     }
 
     if (phase === "spelling") {
-        const word = words[spellingIndex];
+        const word = activeWords[spellingIndex];
         const targetWord = word.term.toUpperCase();
-        const progress = (spellingIndex / words.length) * 100;
+        const targetWordNoSpaces = targetWord.replace(/\s/g, "");
+        const progress = (spellingIndex / activeWords.length) * 100;
         const spelledStr = spelledWord.map(s => s.char).join("");
-        const isWrong = spelledStr.length === targetWord.length && spelledStr !== targetWord;
-        const isCorrectSpelling = spelledStr === targetWord;
+        const isWrong = spelledStr.length === targetWordNoSpaces.length && spelledStr !== targetWordNoSpaces;
+        const isCorrectSpelling = spelledStr === targetWordNoSpaces;
 
         return (
             <div className="min-h-[calc(100vh-70px)] bg-slate-900 text-white flex flex-col font-sans">
@@ -867,7 +870,7 @@ export default function Learn() {
                                 Xem đáp án
                             </button>
                             <span className="font-black text-xs uppercase tracking-widest">
-                                {spellingIndex + 1} / {words.length}
+                                {spellingIndex + 1} / {activeWords.length}
                             </span>
                         </div>
                     </div>
@@ -880,20 +883,29 @@ export default function Learn() {
 
                     {/* Word Slots */}
                     <div className="flex flex-wrap justify-center gap-2 mb-12">
-                        {targetWord.split("").map((_, i) => (
-                            <div
-                                key={i}
-                                onClick={() => i === spelledWord.length - 1 && undoLastLetter()}
-                                className={`w-12 h-16 md:w-16 md:h-20 rounded-2xl border-2 flex items-center justify-center text-3xl md:text-4xl font-black transition-all shadow-lg cursor-pointer
-                                    ${spelledWord[i] ? 'bg-primary border-primary text-white scale-105' : 'bg-slate-800 border-slate-700 text-transparent'}
-                                    ${isWrong ? 'border-red-500 bg-red-500 animate-shake' : ''}
-                                    ${isCorrectSpelling ? 'bg-green-500 border-green-500' : ''}
-                                    ${i === spelledWord.length - 1 && spelledWord[i] ? 'hover:scale-110 active:scale-95' : ''}
-                                `}
-                            >
-                                {spelledWord[i]?.char || ""}
-                            </div>
-                        ))}
+                        {targetWord.split("").map((char, i) => {
+                            // Calculate which char from spelledWord should be here
+                            const precedingNonSpaces = targetWord.slice(0, i).replace(/\s/g, "").length;
+                            const isSpace = char === " ";
+                            const displayChar = isSpace ? " " : (spelledWord[precedingNonSpaces]?.char || "");
+                            const isFilled = isSpace || !!spelledWord[precedingNonSpaces];
+
+                            return (
+                                <div
+                                    key={i}
+                                    onClick={() => !isSpace && precedingNonSpaces === spelledWord.length - 1 && spelledWord[precedingNonSpaces] && undoLastLetter()}
+                                    className={`w-12 h-16 md:w-16 md:h-20 rounded-2xl border-2 flex items-center justify-center text-3xl md:text-4xl font-black transition-all shadow-lg 
+                                        ${isSpace ? 'border-transparent bg-transparent w-6 md:w-8' :
+                                            isFilled ? 'bg-primary border-primary text-white scale-105 cursor-pointer' : 'bg-slate-800 border-slate-700 text-transparent'}
+                                        ${isWrong && !isSpace ? 'border-red-500 bg-red-500 animate-shake' : ''}
+                                        ${isCorrectSpelling && !isSpace ? 'bg-green-500 border-green-500' : ''}
+                                        ${!isSpace && precedingNonSpaces === spelledWord.length - 1 && spelledWord[precedingNonSpaces] ? 'hover:scale-110 active:scale-95' : ''}
+                                    `}
+                                >
+                                    {displayChar}
+                                </div>
+                            );
+                        })}
                     </div>
 
                     {/* Pickable Letters */}
@@ -1023,7 +1035,7 @@ export default function Learn() {
 
                     <div className="bg-gray-50 rounded-3xl p-8 mb-10 border border-gray-100 flex justify-around">
                         <div>
-                            <div className="text-3xl font-black text-gray-900">{score}/{words.length}</div>
+                            <div className="text-3xl font-black text-gray-900">{score}/{activeWords.length}</div>
                             <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Accuracy</div>
                         </div>
                         <div className="w-px bg-gray-200" />
@@ -1047,8 +1059,8 @@ export default function Learn() {
     }
 
     // Default: Learning Phase
-    const word = words[currentCard];
-    const learningProgress = (currentCard / words.length) * 100;
+    const word = activeWords[currentCard];
+    const learningProgress = (currentCard / activeWords.length) * 100;
     const viTypes = getViType(word.type || '');
 
     return (
@@ -1070,7 +1082,7 @@ export default function Learn() {
                         </button>
                     </div>
                     <span className="font-black bg-white px-2 md:px-4 py-1 md:py-1.5 rounded-full border border-gray-100 shadow-sm text-[10px] md:text-xs text-primary uppercase tracking-widest leading-none">
-                        {currentCard + 1} / {words.length}
+                        {currentCard + 1} / {activeWords.length}
                     </span>
                 </div>
 

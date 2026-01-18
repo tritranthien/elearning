@@ -67,10 +67,30 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 navigator.serviceWorker.register('/sw.js')
                   .then(function(registration) {
                     console.log('[PWA] Service Worker registered:', registration.scope);
+                    
+                    // Check for updates periodically
+                    setInterval(() => {
+                      registration.update();
+                    }, 1000 * 60 * 60); // Check every hour
+                    
+                    // Check for updates when the app becomes visible again
+                    document.addEventListener('visibilitychange', () => {
+                      if (document.visibilityState === 'visible') {
+                        registration.update();
+                      }
+                    });
                   })
                   .catch(function(error) {
                     console.log('[PWA] Service Worker registration failed:', error);
                   });
+              });
+
+              // Reload the page when a new service worker takes control
+              let refreshing = false;
+              navigator.serviceWorker.addEventListener('controllerchange', function() {
+                if (refreshing) return;
+                refreshing = true;
+                window.location.reload();
               });
             }
           `

@@ -1,7 +1,7 @@
 // LinguaFast Service Worker
-const CACHE_NAME = 'linguafast-v3';
-const STATIC_CACHE = 'linguafast-static-v3';
-const DYNAMIC_CACHE = 'linguafast-dynamic-v3';
+const CACHE_NAME = 'linguafast-v4';
+const STATIC_CACHE = 'linguafast-static-v4';
+const DYNAMIC_CACHE = 'linguafast-dynamic-v4';
 
 // Static assets to cache
 const STATIC_ASSETS = [
@@ -67,29 +67,34 @@ self.addEventListener('fetch', (event) => {
         return; // Let browser fetch directly without SW intervention
     }
 
-    // For HTML pages - network first
-    if (request.headers.get('accept')?.includes('text/html')) {
+    // For HTML pages and Data requests - network first
+    const isDataRequest = url.search.includes('_data=') ||
+        request.headers.get('Accept')?.includes('application/json');
+
+    if (request.headers.get('accept')?.includes('text/html') || isDataRequest) {
         event.respondWith(
             fetch(request)
                 .then((response) => {
-                    // Clone and cache the response
-                    const responseClone = response.clone();
-                    caches.open(DYNAMIC_CACHE).then((cache) => {
-                        cache.put(request, responseClone);
-                    });
+                    // Only cache successful GET responses
+                    if (response.status === 200 && request.method === 'GET') {
+                        const responseClone = response.clone();
+                        caches.open(DYNAMIC_CACHE).then((cache) => {
+                            cache.put(request, responseClone);
+                        });
+                    }
                     return response;
                 })
                 .catch(() => {
                     // Fallback to cache
                     return caches.match(request).then((cachedResponse) => {
-                        return cachedResponse || caches.match('/');
+                        return cachedResponse || (isDataRequest ? null : caches.match('/'));
                     });
                 })
         );
         return;
     }
 
-    // For other assets - cache first
+    // For static assets (images, fonts, etc.) - cache first, fallback to network
     event.respondWith(
         caches.match(request).then((cachedResponse) => {
             if (cachedResponse) {
@@ -97,7 +102,7 @@ self.addEventListener('fetch', (event) => {
             }
             return fetch(request).then((response) => {
                 // Cache successful responses
-                if (response.status === 200) {
+                if (response.status === 200 && request.method === 'GET') {
                     const responseClone = response.clone();
                     caches.open(DYNAMIC_CACHE).then((cache) => {
                         cache.put(request, responseClone);
