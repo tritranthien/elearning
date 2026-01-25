@@ -352,13 +352,10 @@ Yêu cầu:
 3. Sử dụng từ vựng phổ biến, dễ hiểu
 4. Câu tiếng Việt và tiếng Anh phải tương ứng chính xác
 
-Trả về JSON object với format:
-{
-  "vietnameseText": "câu tiếng Việt",
-  "englishText": "câu tiếng Anh tương ứng"
-}
+QUAN TRỌNG: Trả về CHÍNH XÁC format JSON sau, KHÔNG thêm bất kỳ text nào khác:
+{"vietnameseText": "câu tiếng Việt ở đây", "englishText": "English sentence here"}
 
-Trả về ONLY valid JSON object, không có text khác.`;
+CHỈ trả về 1 dòng JSON object duy nhất như trên.`;
 
   const models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro"];
   let lastError: any = null;
@@ -376,7 +373,7 @@ Trả về ONLY valid JSON object, không có text khác.`;
           contents: [{ role: "user", parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.8, // Higher temperature for more creative suggestions
-            maxOutputTokens: 512,
+            maxOutputTokens: 1024, // Increased from 512 to prevent truncation
           }
         });
 
@@ -470,9 +467,20 @@ export async function generateMultipleSuggestions(
   // Determine next speaker based on last message
   const lastSpeaker = conversationHistory.length > 0
     ? conversationHistory[0].speaker // conversations are ordered DESC, so [0] is latest
-    : "B"; // If no history, default to suggesting "A" starts
+    : "B"; // If no history, default lastSpeaker to "B" so nextSpeakerForResponse becomes "A"
 
   const nextSpeakerForResponse = lastSpeaker === "A" ? "B" : "A";
+
+  // Adjust prompt based on whether there's conversation history
+  const suggestionInstructions = conversationHistory.length > 0
+    ? `Nhiệm vụ: Tạo 3 GỢI Ý cho câu tiếp theo. Bao gồm:
+1. Một câu cho ${nextSpeakerForResponse} ĐÁP LẠI câu cuối (casual/friendly)
+2. Một câu cho ${nextSpeakerForResponse} ĐÁP LẠI câu cuối (formal/polite) 
+3. Một câu cho ${lastSpeaker} TIẾP TỤC NÓI (chủ đề liên quan)`
+    : `Nhiệm vụ: Tạo 3 GỢI Ý để BẮT ĐẦU hội thoại. Tất cả đều là câu cho ${nextSpeakerForResponse} (người A) mở đầu:
+1. Một câu chào hỏi thân mật
+2. Một câu giới thiệu bản thân hoặc hỏi han lịch sự
+3. Một câu bắt đầu chủ đề chính`;
 
   const prompt = `Bạn là trợ lý giúp tạo hội thoại thực tế cho người học tiếng Anh.
 
@@ -480,10 +488,7 @@ Chủ đề hội thoại: "${topicTitle}"
 Lịch sử hội thoại (mới nhất trước):
 ${historyContext}
 
-Nhiệm vụ: Tạo 3 GỢI Ý cho câu tiếp theo. Bao gồm:
-1. Một câu cho ${nextSpeakerForResponse} ĐÁP LẠI câu cuối (casual/friendly)
-2. Một câu cho ${nextSpeakerForResponse} ĐÁP LẠI câu cuối (formal/polite) 
-3. Một câu cho ${lastSpeaker} TIẾP TỤC NÓI (chủ đề liên quan)
+${suggestionInstructions}
 
 Yêu cầu:
 - Mỗi câu phải TỰ NHIÊN, THỰC TẾ, PHÙ HỢP ngữ cảnh hội thoại hàng ngày

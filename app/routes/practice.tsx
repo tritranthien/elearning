@@ -543,6 +543,7 @@ export default function Practice() {
     const [newTopicDescription, setNewTopicDescription] = useState("");
     const [newTopicIcon, setNewTopicIcon] = useState("💬");
     const [currentResult, setCurrentResult] = useState<{
+        vietnameseText: string;
         englishText: string;
         phrases: any[];
     } | null>(null);
@@ -718,6 +719,7 @@ export default function Practice() {
                 const data = translationFetcher.data as any;
                 // Show translation immediately
                 setCurrentResult({
+                    vietnameseText: data.vietnameseText,
                     englishText: data.englishText,
                     phrases: []
                 });
@@ -857,6 +859,7 @@ export default function Practice() {
         } else {
             setSelectedConversationId(conv.id);
             setCurrentResult({
+                vietnameseText: conv.vietnameseText,
                 englishText: conv.englishText,
                 phrases: conv.phrases
             });
@@ -1266,19 +1269,30 @@ export default function Practice() {
                                 {currentResult && (
                                     <div className="bg-white rounded-2xl md:rounded-3xl shadow-2xl overflow-hidden animate-slideUp">
                                         <div className="p-4 md:p-6 bg-gradient-to-r from-indigo-500 to-purple-600">
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-white/60 text-[10px] md:text-xs font-bold uppercase tracking-wider mb-1 md:mb-2">Tiếng Anh</p>
-                                                    <p className="text-lg md:text-2xl font-black text-white leading-relaxed break-words">
-                                                        {currentResult.englishText}
+                                            <div className="space-y-3">
+                                                {/* Vietnamese (Original) */}
+                                                <div>
+                                                    <p className="text-white/60 text-[10px] md:text-xs font-bold uppercase tracking-wider mb-1">Câu gốc (Tiếng Việt)</p>
+                                                    <p className="text-base md:text-lg font-bold text-white/90 leading-relaxed break-words">
+                                                        🇻🇳 {currentResult.vietnameseText}
                                                     </p>
                                                 </div>
-                                                <button
-                                                    onClick={() => speakEnglish(currentResult.englishText)}
-                                                    className="p-4 bg-white/20 hover:bg-white/30 rounded-xl transition-all text-2xl"
-                                                >
-                                                    🔊
-                                                </button>
+                                                {/* English (Translation) */}
+                                                <div className="flex items-start justify-between gap-3 pt-2 border-t border-white/20">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-white/60 text-[10px] md:text-xs font-bold uppercase tracking-wider mb-1 md:mb-2">Bản dịch (Tiếng Anh)</p>
+                                                        <p className="text-lg md:text-2xl font-black text-white leading-relaxed break-words">
+                                                            🇺🇸 {currentResult.englishText}
+                                                        </p>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => speakEnglish(currentResult.englishText)}
+                                                        className="p-3 md:p-4 bg-white/20 hover:bg-white/30 rounded-xl transition-all text-xl md:text-2xl shrink-0"
+                                                        title="Phát âm tiếng Anh"
+                                                    >
+                                                        🔊
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
 
