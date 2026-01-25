@@ -105,6 +105,7 @@ model ConversationTopic {
   
   conversations Conversation[] // All conversations in this topic
   phrases       Phrase[]       // All phrases learned in this topic
+  suggestions   ConversationSuggestion[] // Pre-generated suggestions
   
   user          User     @relation(fields: [userId], references: [id])
 }
@@ -115,6 +116,7 @@ model Conversation {
   userId         String   @db.ObjectId
   vietnameseText String   // Original Vietnamese text from speech
   englishText    String   // Translated English text
+  speaker        String   @default("A") // Who is speaking: "A" or "B"
   createdAt      DateTime @default(now())
   
   topicId        String   @db.ObjectId
@@ -143,4 +145,25 @@ model Phrase {
   createdAt       DateTime @default(now())
   
   @@unique([conversationId, english]) // Prevent duplicate phrases within same conversation
+}
+
+// Pre-generated conversation suggestions to reduce API calls
+model ConversationSuggestion {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  topicId         String   @db.ObjectId
+  topic           ConversationTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  
+  // The suggestion content
+  vietnameseText  String   // Suggested Vietnamese sentence
+  englishText     String   // Suggested English translation
+  speaker         String   // "A" or "B" - who should say this
+  
+  // Context - generated after which conversation?
+  afterConversationId String? @db.ObjectId // If null, it's an initial suggestion
+  
+  // Metadata
+  isUsed          Boolean  @default(false) // True if user selected this suggestion
+  createdAt       DateTime @default(now())
+  
+  @@index([topicId, isUsed])
 }

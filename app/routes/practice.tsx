@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { Link, useLoaderData, useFetcher } from "react-router";
+import { Link, useLoaderData, useFetcher, useRevalidator } from "react-router";
 import type { Route } from "./+types/practice";
 import { prisma } from "../utils/db.server";
 import { requireUserId } from "../utils/session.server";
-import { translateAndAnalyze } from "../utils/ai.server";
+// ai.server imported dynamically in action
 import { toast } from "sonner";
 
 export function meta({ }: Route.MetaArgs) {
@@ -25,6 +25,7 @@ const TOPIC_ICONS = ["💬", "🛒", "🍽️", "✈️", "🏥", "💼", "🎓"
 
 export async function loader({ request }: Route.LoaderArgs) {
     const userId = await requireUserId(request);
+    console.log("[Practice] Loader for user:", userId);
 
     // Get all conversation topics for the user with conversations and their phrases
     let topics: any[] = [];
@@ -40,12 +41,18 @@ export async function loader({ request }: Route.LoaderArgs) {
                 },
                 phrases: {
                     orderBy: { createdAt: "desc" }
+                },
+                suggestions: {
+                    where: { isUsed: false },
+                    orderBy: { createdAt: "desc" },
+                    take: 10 // Get up to 10 unused suggestions
                 }
             },
             orderBy: { updatedAt: "desc" }
         });
+        console.log(`[Practice] Found ${topics.length} topics for user ${userId}`);
     } catch (e) {
-        console.log("[Practice] ConversationTopic model not available yet. Run 'npx prisma db push'");
+        console.error("[Practice] Error fetching topics:", e);
     }
 
     // Get all vocabulary topics for moving phrases
@@ -125,40 +132,80 @@ export async function action({ request }: Route.ActionArgs) {
         }
 
         try {
-            const result = await translateAndAnalyze(vietnameseText.trim());
+            const { fastTranslate } = await import("../utils/ai.server");
+            // STEP 1: Fast Translate
+            const englishText = await fastTranslate(vietnameseText.trim());
 
-            // Save conversation to topic first
+            // Get speaker from form data or default to "A"
+            const speaker = (formData.get("speaker") as string) || "A";
+
+            // Save conversation immediately with the fast translation
             const conversation = await prisma.conversation.create({
                 data: {
                     userId,
                     topicId,
                     vietnameseText: vietnameseText.trim(),
-                    englishText: result.englishText
+                    englishText: englishText,
+                    speaker: speaker
                 }
             });
 
-            // Save phrases linked to this conversation (skip duplicates within conversation)
+            // Update topic's updatedAt
+            await prisma.conversationTopic.update({
+                where: { id: topicId },
+                data: { updatedAt: new Date() }
+            });
+
+            return {
+                success: true,
+                intent: "translate",
+                englishText: englishText,
+                conversationId: conversation.id,
+                vietnameseText: vietnameseText.trim(),
+                topicId: topicId
+            };
+        } catch (error: any) {
+            return { error: error.message || "Lỗi khi dịch nhanh.", intent };
+        }
+    }
+
+    // Step 2: Analyze the translation to extract phrases
+    if (intent === "analyze-phrases") {
+        const conversationId = formData.get("conversationId") as string;
+        const topicId = formData.get("topicId") as string;
+        const englishText = formData.get("englishText") as string;
+        const vietnameseText = formData.get("vietnameseText") as string;
+
+        if (!conversationId || !englishText) {
+            return { error: "Thiếu dữ liệu để phân tích.", intent };
+        }
+
+        try {
+            const { analyzeTranslation } = await import("../utils/ai.server");
+            // STEP 2: Complex Analysis
+            const phrases = await analyzeTranslation(englishText, vietnameseText);
+
+            // Save phrases linked to this conversation
             const savedPhrases: string[] = [];
             const skippedPhrases: string[] = [];
-            const savedPhrasesList: any[] = [];
 
-            for (const phrase of result.phrases) {
+            for (const phrase of phrases) {
                 try {
                     // Check if phrase already exists in this conversation
                     const existing = await prisma.phrase.findUnique({
                         where: {
                             conversationId_english: {
-                                conversationId: conversation.id,
+                                conversationId: conversationId,
                                 english: phrase.english
                             }
                         }
                     });
 
                     if (!existing) {
-                        const savedPhrase = await prisma.phrase.create({
+                        await prisma.phrase.create({
                             data: {
                                 topicId,
-                                conversationId: conversation.id,
+                                conversationId: conversationId,
                                 english: phrase.english,
                                 vietnamese: phrase.vietnamese,
                                 phonetic: phrase.phonetic,
@@ -168,29 +215,16 @@ export async function action({ request }: Route.ActionArgs) {
                             }
                         });
                         savedPhrases.push(phrase.english);
-                        savedPhrasesList.push(savedPhrase);
                     } else {
                         skippedPhrases.push(phrase.english);
                     }
-                } catch (e) {
-                    console.log(`[Practice] Error saving phrase ${phrase.english}:`, e);
-                }
-            }
 
-            // Update topic's updatedAt
-            await prisma.conversationTopic.update({
-                where: { id: topicId },
-                data: { updatedAt: new Date() }
-            });
-
-            // Also auto-save to dictionary
-            for (const phrase of result.phrases) {
-                try {
-                    const existing = await prisma.word.findFirst({
+                    // Also auto-save to global dictionary
+                    const dictExisting = await prisma.word.findFirst({
                         where: { term: { equals: phrase.english, mode: "insensitive" } }
                     });
 
-                    if (!existing) {
+                    if (!dictExisting) {
                         await prisma.word.create({
                             data: {
                                 term: phrase.english,
@@ -205,21 +239,20 @@ export async function action({ request }: Route.ActionArgs) {
                         });
                     }
                 } catch (e) {
-                    console.log(`[Practice] Error saving to dictionary:`, e);
+                    console.log(`[Practice] Error saving phrase ${phrase.english}:`, e);
                 }
             }
 
             return {
                 success: true,
                 intent,
-                englishText: result.englishText,
-                phrases: result.phrases,
-                conversationId: conversation.id,
+                phrases,
+                conversationId,
                 savedPhrases,
                 skippedPhrases
             };
         } catch (error: any) {
-            return { error: error.message || "Lỗi khi dịch.", intent };
+            return { error: error.message || "Lỗi khi phân tích từ vựng.", intent };
         }
     }
 
@@ -300,6 +333,134 @@ export async function action({ request }: Route.ActionArgs) {
         }
     }
 
+    // Suggest next sentence
+    if (intent === "suggest-next-sentence") {
+        const topicId = formData.get("topicId") as string;
+        const nextSpeaker = formData.get("nextSpeaker") as string;
+
+        if (!topicId) {
+            return { error: "Vui lòng chọn một chủ đề.", intent };
+        }
+
+        if (nextSpeaker !== "A" && nextSpeaker !== "B") {
+            return { error: "Người nói không hợp lệ.", intent };
+        }
+
+        try {
+            // Get topic info
+            const topic = await prisma.conversationTopic.findUnique({
+                where: { id: topicId },
+                include: {
+                    conversations: {
+                        orderBy: { createdAt: "desc" },
+                        take: 5 // Reduced from 10 to 5 to save API tokens
+                    }
+                }
+            });
+
+            if (!topic) {
+                return { error: "Không tìm thấy chủ đề.", intent };
+            }
+
+            // Build conversation history
+            const history = topic.conversations.map(conv => ({
+                speaker: conv.speaker || "A",
+                vietnameseText: conv.vietnameseText,
+                englishText: conv.englishText
+            }));
+
+            const { suggestNextSentence } = await import("../utils/ai.server");
+            const suggestion = await suggestNextSentence(
+                history,
+                nextSpeaker as "A" | "B",
+                topic.title
+            );
+
+            return {
+                success: true,
+                intent,
+                suggestion,
+                nextSpeaker
+            };
+        } catch (error: any) {
+            return { error: error.message || "Lỗi khi tạo gợi ý.", intent };
+        }
+    }
+
+    // Auto-generate suggestions (called in background after translation)
+    if (intent === "auto-generate-suggestions") {
+        const topicId = formData.get("topicId") as string;
+        const conversationId = formData.get("conversationId") as string;
+
+        if (!topicId) {
+            return { error: "Vui lòng chọn một chủ đề.", intent };
+        }
+
+        try {
+            // Delete old unused suggestions for this topic (keep only 10 most recent)
+            const oldSuggestions = await prisma.conversationSuggestion.findMany({
+                where: { topicId, isUsed: false },
+                orderBy: { createdAt: "desc" },
+                skip: 10
+            });
+
+            if (oldSuggestions.length > 0) {
+                await prisma.conversationSuggestion.deleteMany({
+                    where: { id: { in: oldSuggestions.map(s => s.id) } }
+                });
+            }
+
+            // Get topic info and recent conversations
+            const topic = await prisma.conversationTopic.findUnique({
+                where: { id: topicId },
+                include: {
+                    conversations: {
+                        orderBy: { createdAt: "desc" },
+                        take: 5
+                    }
+                }
+            });
+
+            if (!topic) {
+                return { error: "Không tìm thấy chủ đề.", intent };
+            }
+
+            // Build conversation history
+            const history = topic.conversations.map(conv => ({
+                speaker: conv.speaker || "A",
+                vietnameseText: conv.vietnameseText,
+                englishText: conv.englishText
+            }));
+
+            // Generate multiple suggestions
+            const { generateMultipleSuggestions } = await import("../utils/ai.server");
+            const suggestions = await generateMultipleSuggestions(history, topic.title);
+
+            // Save suggestions to database
+            const saved = await prisma.conversationSuggestion.createMany({
+                data: suggestions.map(sug => ({
+                    topicId,
+                    vietnameseText: sug.vietnameseText,
+                    englishText: sug.englishText,
+                    speaker: sug.speaker,
+                    afterConversationId: conversationId
+                }))
+            });
+
+            console.log(`[Practice] Auto-generated ${saved.count} suggestions for topic ${topicId}`);
+
+            return {
+                success: true,
+                intent,
+                count: saved.count
+            };
+        } catch (error: any) {
+            console.error("[Practice] Error auto-generating suggestions:", error);
+            // Don't fail the main flow, just log the error
+            return { error: error.message || "Lỗi khi tạo gợi ý tự động.", intent };
+        }
+    }
+
     return { error: "Hành động không hợp lệ." };
 }
 
@@ -365,7 +526,12 @@ function useSpeechRecognition() {
 
 export default function Practice() {
     const { topics, vocabularyTopics } = useLoaderData<typeof loader>();
-    const fetcher = useFetcher<typeof action>();
+    const revalidator = useRevalidator();
+    const mainFetcher = useFetcher<typeof action>();
+    const translationFetcher = useFetcher<typeof action>();
+    const analysisFetcher = useFetcher<typeof action>();
+    const suggestionFetcher = useFetcher<typeof action>();
+    const autoSuggestFetcher = useFetcher<typeof action>(); // For background suggestion generation
 
     const { isListening, transcript, isSupported, startListening, stopListening, setTranscript } = useSpeechRecognition();
 
@@ -390,8 +556,14 @@ export default function Practice() {
     const [conversationsPage, setConversationsPage] = useState(1);
     const [phrasesPage, setPhrasesPage] = useState(1);
     const ITEMS_PER_PAGE = 10;
+    // Suggestion state
+    const [currentSuggestion, setCurrentSuggestion] = useState<{ vietnameseText: string; englishText: string; speaker: string } | null>(null);
 
-    const isLoading = fetcher.state !== "idle";
+    const isMainLoading = mainFetcher.state !== "idle";
+    const isTranslationLoading = translationFetcher.state !== "idle";
+    const isAnalysisLoading = analysisFetcher.state !== "idle";
+    const isLoading = isMainLoading || isTranslationLoading || isAnalysisLoading;
+    const isProcessing = isTranslationLoading || isAnalysisLoading;
 
     // Filter topics based on search query
     const filteredTopics = topics.filter((topic: any) => {
@@ -425,15 +597,77 @@ export default function Practice() {
         setPhrasesPage(1);
     }, [selectedTopicId, selectedConversationId]);
 
-    // Text-to-speech for English
-    const speakEnglish = (text: string) => {
-        if (!window.speechSynthesis) return;
-        window.speechSynthesis.cancel();
+    // Helper function to actually speak
+    const speakNow = (text: string) => {
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = "en-US";
         utterance.rate = 0.85;
+
+        // Try to use a specific English voice if available
+        const voices = window.speechSynthesis.getVoices();
+        const englishVoice = voices.find(voice => voice.lang.startsWith('en'));
+        if (englishVoice) {
+            utterance.voice = englishVoice;
+        }
+
         window.speechSynthesis.speak(utterance);
+
+        // CRITICAL: Some browsers auto-pause speech synthesis
+        // Calling resume() immediately after speak() fixes audio cutoff
+        setTimeout(() => {
+            window.speechSynthesis.resume();
+        }, 10);
     };
+
+    // Text-to-speech for English
+    const speakEnglish = (text: string) => {
+        if (!window.speechSynthesis) return;
+
+        // Cancel any ongoing speech
+        window.speechSynthesis.cancel();
+
+        // TRICK: Speak twice in rapid succession!
+        // First utterance warms up the engine (gets cut off)
+        // Second utterance plays perfectly (mimics clicking speaker icon twice)
+
+        // First speak (dummy/warm-up) - will be cancelled immediately
+        speakNow(text);
+
+        // Wait a tiny bit, then cancel and speak again (this one will be perfect)
+        setTimeout(() => {
+            window.speechSynthesis.cancel();
+            setTimeout(() => {
+                speakNow(text);
+            }, 50);
+        }, 100);
+    };
+
+    // Warm up Speech Synthesis on component mount to prevent audio cutoff on first use
+    useEffect(() => {
+        if (window.speechSynthesis) {
+            // Load voices early
+            const loadVoices = () => {
+                const voices = window.speechSynthesis.getVoices();
+                console.log('[Practice] Loaded', voices.length, 'voices for TTS');
+            };
+
+            loadVoices();
+
+            // Some browsers need an event listener to load voices
+            window.speechSynthesis.onvoiceschanged = loadVoices;
+
+            // Warm up the engine with an actual utterance (very fast and quiet)
+            setTimeout(() => {
+                const warmUp = new SpeechSynthesisUtterance('test');
+                warmUp.volume = 0.01; // Almost silent
+                warmUp.rate = 10; // Very fast
+                window.speechSynthesis.speak(warmUp);
+
+                // Resume to ensure it actually plays
+                setTimeout(() => window.speechSynthesis.resume(), 10);
+            }, 100);
+        }
+    }, []);
 
     // Update input when transcript changes
     useEffect(() => {
@@ -442,37 +676,13 @@ export default function Practice() {
         }
     }, [transcript]);
 
-    // Handle fetcher results
+    // Handle main fetcher results (create, delete, etc.)
     useEffect(() => {
-        if (fetcher.state === "idle" && fetcher.data) {
-            if (fetcher.data.error) {
-                toast.error(fetcher.data.error);
-            } else if (fetcher.data.intent === "translate" && fetcher.data.success) {
-                const data = fetcher.data as any;
-                setCurrentResult({
-                    englishText: data.englishText,
-                    phrases: data.phrases
-                });
-                speakEnglish(data.englishText);
-                setInputText("");
-                // Select the newly created conversation
-                if (data.conversationId) {
-                    setSelectedConversationId(data.conversationId);
-                }
-
-                const saved = data.savedPhrases?.length || 0;
-                const skipped = data.skippedPhrases?.length || 0;
-                if (saved > 0 && skipped > 0) {
-                    toast.success(`Đã dịch! Lưu ${saved} từ mới, bỏ qua ${skipped} từ đã có.`);
-                } else if (saved > 0) {
-                    toast.success(`Đã dịch và lưu ${saved} từ mới!`);
-                } else if (skipped > 0) {
-                    toast.success(`Đã dịch! ${skipped} từ đã có trong câu này.`);
-                } else {
-                    toast.success("Đã dịch thành công!");
-                }
-            } else if (fetcher.data.intent === "create-topic" && fetcher.data.success) {
-                const topic = (fetcher.data as any).topic;
+        if (mainFetcher.state === "idle" && mainFetcher.data) {
+            if (mainFetcher.data.error) {
+                toast.error(mainFetcher.data.error);
+            } else if (mainFetcher.data.intent === "create-topic" && mainFetcher.data.success) {
+                const topic = (mainFetcher.data as any).topic;
                 if (topic) {
                     setSelectedTopicId(topic.id);
                     setSelectedConversationId(null);
@@ -482,29 +692,141 @@ export default function Practice() {
                 setNewTopicTitle("");
                 setNewTopicDescription("");
                 setNewTopicIcon("💬");
-            } else if (fetcher.data.intent === "delete-topic" && fetcher.data.success) {
-                const deletedId = (fetcher.data as any).deletedTopicId;
+            } else if (mainFetcher.data.intent === "delete-topic" && mainFetcher.data.success) {
+                const deletedId = (mainFetcher.data as any).deletedTopicId;
                 if (selectedTopicId === deletedId) {
                     setSelectedTopicId(null);
                     setSelectedConversationId(null);
                     setCurrentResult(null);
                 }
                 toast.success("Đã xóa chủ đề!");
-            } else if (fetcher.data.intent === "move-to-topic" && fetcher.data.success) {
-                const message = (fetcher.data as any).message;
+            } else if (mainFetcher.data.intent === "move-to-topic" && mainFetcher.data.success) {
+                const message = (mainFetcher.data as any).message;
                 toast.success(message || "Đã chuyển từ vựng!");
                 setMovePhrase(null);
                 setSelectedVocabTopicId("");
             }
         }
-    }, [fetcher.state, fetcher.data]);
+    }, [mainFetcher.state, mainFetcher.data]);
+
+    // Handle translation fetcher results
+    useEffect(() => {
+        if (translationFetcher.state === "idle" && translationFetcher.data) {
+            if (translationFetcher.data.error) {
+                toast.error(translationFetcher.data.error);
+            } else if (translationFetcher.data.intent === "translate" && translationFetcher.data.success) {
+                const data = translationFetcher.data as any;
+                // Show translation immediately
+                setCurrentResult({
+                    englishText: data.englishText,
+                    phrases: []
+                });
+                speakEnglish(data.englishText);
+                setInputText("");
+                if (data.conversationId) {
+                    setSelectedConversationId(data.conversationId);
+                }
+
+                // CRITICAL: Revalidate loader to refresh conversation list
+                revalidator.revalidate();
+
+                toast.success("Đã dịch xong! Đang phân tích từ vựng...");
+
+                // Automatically trigger analytical step with the DEDICATED analysis fetcher
+                analysisFetcher.submit(
+                    {
+                        intent: "analyze-phrases",
+                        conversationId: data.conversationId,
+                        topicId: data.topicId,
+                        englishText: data.englishText,
+                        vietnameseText: data.vietnameseText
+                    },
+                    { method: "post" }
+                );
+            }
+        }
+    }, [translationFetcher.state, translationFetcher.data]);
+
+    // Handle analysis fetcher results
+    useEffect(() => {
+        if (analysisFetcher.state === "idle" && analysisFetcher.data) {
+            if (analysisFetcher.data.error) {
+                toast.error(analysisFetcher.data.error);
+            } else if (analysisFetcher.data.intent === "analyze-phrases" && analysisFetcher.data.success) {
+                const data = analysisFetcher.data as any;
+                // Update with analyzed phrases
+                setCurrentResult(prev => prev ? {
+                    ...prev,
+                    phrases: data.phrases
+                } : null);
+
+                const saved = data.savedPhrases?.length || 0;
+                if (saved > 0) {
+                    toast.success(`Đã phân tích xong! Đã lưu thêm ${saved} từ mới vào kho.`);
+                } else {
+                    toast.success("Phân tích hoàn tất!");
+                }
+
+                // Auto-generate suggestions in background (don't wait for it)
+                if (data.conversationId && data.topicId) {
+                    autoSuggestFetcher.submit(
+                        { intent: "auto-generate-suggestions", conversationId: data.conversationId, topicId: data.topicId },
+                        { method: "post" }
+                    );
+                    console.log("[Practice] Triggered auto-generate suggestions in background");
+                }
+            }
+        }
+    }, [analysisFetcher.state, analysisFetcher.data]);
+
+    // Handle suggestion fetcher results
+    useEffect(() => {
+        if (suggestionFetcher.state === "idle" && suggestionFetcher.data) {
+            if (suggestionFetcher.data.error) {
+                toast.error(suggestionFetcher.data.error);
+            } else if (suggestionFetcher.data.intent === "suggest-next-sentence" && suggestionFetcher.data.success) {
+                const data = suggestionFetcher.data as any;
+                const suggestion = data.suggestion;
+                const nextSpeaker = data.nextSpeaker;
+
+                // Set current suggestion with speaker
+                setCurrentSuggestion({
+                    ...suggestion,
+                    speaker: nextSpeaker
+                });
+
+                // Auto-fill the input
+                setInputText(suggestion.vietnameseText);
+
+                toast.success(`Gợi ý cho ${nextSpeaker}: "${suggestion.vietnameseText}"`);
+            }
+        }
+    }, [suggestionFetcher.state, suggestionFetcher.data]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!inputText.trim() || !selectedTopicId) return;
 
-        fetcher.submit(
-            { intent: "translate", vietnameseText: inputText, topicId: selectedTopicId },
+        // Get speaker from currentSuggestion if exists, otherwise default to "A"
+        const speaker = currentSuggestion?.speaker || "A";
+
+        translationFetcher.submit(
+            { intent: "translate", vietnameseText: inputText, topicId: selectedTopicId, speaker },
+            { method: "post" }
+        );
+
+        // Clear suggestion after submit
+        setCurrentSuggestion(null);
+    };
+
+    const handleSuggestNext = (nextSpeaker: "A" | "B") => {
+        if (!selectedTopicId) {
+            toast.error("Vui lòng chọn một chủ đề!");
+            return;
+        }
+
+        suggestionFetcher.submit(
+            { intent: "suggest-next-sentence", topicId: selectedTopicId, nextSpeaker },
             { method: "post" }
         );
     };
@@ -513,7 +835,7 @@ export default function Practice() {
         e.preventDefault();
         if (!newTopicTitle.trim()) return;
 
-        fetcher.submit(
+        mainFetcher.submit(
             { intent: "create-topic", title: newTopicTitle, description: newTopicDescription, icon: newTopicIcon },
             { method: "post" }
         );
@@ -521,7 +843,7 @@ export default function Practice() {
 
     const handleDeleteTopic = (topicId: string) => {
         if (confirm("Bạn có chắc muốn xóa chủ đề này? Tất cả hội thoại và từ vựng trong đó sẽ bị xóa.")) {
-            fetcher.submit(
+            mainFetcher.submit(
                 { intent: "delete-topic", topicId },
                 { method: "post" }
             );
@@ -823,6 +1145,52 @@ export default function Practice() {
                                             </div>
                                         </div>
 
+                                        {/* AI Suggestion Buttons */}
+                                        <div className="mb-4 flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSuggestNext("A")}
+                                                disabled={suggestionFetcher.state !== "idle" || !selectedTopicId}
+                                                className="flex-1 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold text-xs md:text-sm rounded-lg hover:shadow-md active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                                            >
+                                                {suggestionFetcher.state !== "idle" ? (
+                                                    <>
+                                                        <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                        </svg>
+                                                        Đang tạo...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <span>💡</span>
+                                                        <span>A tiếp tục</span>
+                                                    </>
+                                                )}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSuggestNext("B")}
+                                                disabled={suggestionFetcher.state !== "idle" || !selectedTopicId}
+                                                className="flex-1 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white font-bold text-xs md:text-sm rounded-lg hover:shadow-md active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                                            >
+                                                {suggestionFetcher.state !== "idle" ? (
+                                                    <>
+                                                        <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                        </svg>
+                                                        Đang tạo...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <span>💬</span>
+                                                        <span>B đáp lời</span>
+                                                    </>
+                                                )}
+                                            </button>
+                                        </div>
+
                                         <button
                                             type="submit"
                                             disabled={!inputText.trim() || isLoading}
@@ -834,13 +1202,64 @@ export default function Practice() {
                                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                                     </svg>
-                                                    Đang dịch...
+                                                    {isTranslationLoading ? "Đang dịch..." : "Đang phân tích..."}
                                                 </>
                                             ) : (
                                                 <>🔄 Dịch</>
                                             )}
                                         </button>
                                     </form>
+
+                                    {/* Pre-generated Suggestions */}
+                                    {selectedTopic && selectedTopic.suggestions && selectedTopic.suggestions.length > 0 && (
+                                        <div className="mt-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-4 border-2 border-blue-100">
+                                            <div className="flex items-center gap-2 mb-3">
+                                                <span className="text-lg">💡</span>
+                                                <h3 className="text-sm md:text-base font-black text-gray-900">Gợi ý câu tiếp theo</h3>
+                                                <span className="text-xs text-gray-500">({selectedTopic.suggestions.length})</span>
+                                            </div>
+                                            <div className="space-y-2">
+                                                {selectedTopic.suggestions.slice(0, 3).map((sug: any, idx: number) => (
+                                                    <button
+                                                        key={sug.id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setInputText(sug.vietnameseText);
+                                                            setCurrentSuggestion({
+                                                                vietnameseText: sug.vietnameseText,
+                                                                englishText: sug.englishText,
+                                                                speaker: sug.speaker
+                                                            });
+                                                            toast.success(`Đã chọn gợi ý của ${sug.speaker}`);
+                                                        }}
+                                                        className="w-full text-left p-3 bg-white rounded-xl border-2 border-transparent hover:border-blue-400 hover:shadow-md transition-all active:scale-[0.98] group"
+                                                    >
+                                                        <div className="flex items-start gap-2">
+                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 ${sug.speaker === "A" ? "bg-blue-100 text-blue-600" : "bg-purple-100 text-purple-600"}`}>
+                                                                {sug.speaker}
+                                                            </span>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-sm font-bold text-gray-700 mb-0.5 break-words">
+                                                                    🇻🇳 {sug.vietnameseText}
+                                                                </p>
+                                                                <p className="text-xs text-gray-500 break-words">
+                                                                    🇺🇸 {sug.englishText}
+                                                                </p>
+                                                            </div>
+                                                            <span className="text-xl opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                                                →
+                                                            </span>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            {selectedTopic.suggestions.length > 3 && (
+                                                <p className="text-xs text-gray-500 mt-2 text-center">
+                                                    Còn {selectedTopic.suggestions.length - 3} gợi ý khác đang được tạo...
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Translation result - Mobile optimized */}
@@ -871,39 +1290,46 @@ export default function Practice() {
                                                 </span>
                                             </h3>
                                             <div className="space-y-3 md:space-y-4">
-                                                {currentResult.phrases.map((phrase, index) => (
-                                                    <div
-                                                        key={index}
-                                                        className="p-3 md:p-4 bg-gray-50 rounded-xl border-2 border-gray-100"
-                                                    >
-                                                        <div className="flex items-start justify-between gap-2 mb-2">
-                                                            <div className="min-w-0 flex-1">
-                                                                <div className="flex flex-wrap items-center gap-1 md:gap-2 mb-1">
-                                                                    <h4 className="text-base md:text-xl font-black text-gray-900 break-words">{phrase.english}</h4>
-                                                                    <span className="px-1.5 md:px-2 py-0.5 bg-indigo-100 text-indigo-600 text-[10px] md:text-xs font-bold rounded-full shrink-0">
-                                                                        {phrase.partOfSpeech}
-                                                                    </span>
-                                                                </div>
-                                                                <span className="text-gray-400 font-medium text-xs md:text-sm">{phrase.phonetic}</span>
-                                                            </div>
-                                                            <button
-                                                                onClick={() => speakEnglish(phrase.english)}
-                                                                className="p-1.5 md:p-2 hover:bg-gray-200 rounded-lg transition-all shrink-0 touch-target"
-                                                            >
-                                                                🔊
-                                                            </button>
-                                                        </div>
-                                                        <p className="text-emerald-600 font-bold text-sm md:text-base mb-2">{phrase.vietnamese}</p>
-                                                        {phrase.example && (
-                                                            <div className="mt-2 pl-2 md:pl-3 border-l-2 border-gray-200">
-                                                                <p className="text-gray-600 text-xs md:text-sm italic break-words">"{phrase.example}"</p>
-                                                                {phrase.viExample && (
-                                                                    <p className="text-gray-400 text-[10px] md:text-xs mt-1 break-words">→ {phrase.viExample}</p>
-                                                                )}
-                                                            </div>
-                                                        )}
+                                                {currentResult.phrases.length === 0 ? (
+                                                    <div className="py-12 flex flex-col items-center justify-center bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
+                                                        <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                                                        <p className="text-gray-500 font-bold animate-pulse">Đang phân tích từ vựng quan trọng...</p>
+                                                        <p className="text-gray-400 text-xs mt-1">Việc này sẽ tốn vài giây</p>
                                                     </div>
-                                                ))}
+                                                ) : (
+                                                    currentResult.phrases.map((phrase, index) => (
+                                                        <div
+                                                            key={index}
+                                                            className="p-3 md:p-4 bg-gray-50 rounded-xl border-2 border-gray-100"
+                                                        >
+                                                            <div className="flex items-start justify-between gap-2 mb-2">
+                                                                <div className="min-w-0 flex-1">
+                                                                    <div className="flex flex-wrap items-center gap-1 md:gap-2 mb-1">
+                                                                        <h4 className="text-base md:text-xl font-black text-gray-900 break-words">{phrase.english}</h4>
+                                                                        <span className="px-1.5 md:px-2 py-0.5 bg-indigo-100 text-indigo-600 text-[10px] md:text-xs font-bold rounded-full shrink-0">
+                                                                            {phrase.partOfSpeech}
+                                                                        </span>
+                                                                    </div>
+                                                                    <span className="text-gray-400 font-medium text-xs md:text-sm">{phrase.phonetic}</span>
+                                                                </div>
+                                                                <button
+                                                                    onClick={() => speakEnglish(phrase.english)}
+                                                                    className="p-1.5 md:p-2 hover:bg-gray-200 rounded-lg transition-all shrink-0 touch-target"
+                                                                >
+                                                                    🔊
+                                                                </button>
+                                                            </div>
+                                                            <p className="text-emerald-600 font-bold text-sm md:text-base mb-2">{phrase.vietnamese}</p>
+                                                            {phrase.example && (
+                                                                <div className="mt-2 pl-2 md:pl-3 border-l-2 border-gray-200">
+                                                                    <p className="text-gray-600 text-xs md:text-sm italic break-words">"{phrase.example}"</p>
+                                                                    {phrase.viExample && (
+                                                                        <p className="text-gray-400 text-[10px] md:text-xs mt-1 break-words">→ {phrase.viExample}</p>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )))}
                                             </div>
                                         </div>
                                     </div>
@@ -935,9 +1361,14 @@ export default function Practice() {
                                                                     : "hover:bg-gray-50"
                                                                     }`}
                                                             >
-                                                                <p className="text-gray-600 font-medium text-sm break-words mb-1">
-                                                                    🇻🇳 {conv.vietnameseText}
-                                                                </p>
+                                                                <div className="flex items-start gap-2 mb-1">
+                                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 ${(conv.speaker || "A") === "A" ? "bg-blue-100 text-blue-600" : "bg-purple-100 text-purple-600"}`}>
+                                                                        {conv.speaker || "A"}
+                                                                    </span>
+                                                                    <p className="text-gray-600 font-medium text-sm break-words flex-1">
+                                                                        🇻🇳 {conv.vietnameseText}
+                                                                    </p>
+                                                                </div>
                                                                 <p className="text-gray-900 font-bold text-base break-words">
                                                                     🇺🇸 {conv.englishText}
                                                                 </p>
@@ -1026,7 +1457,7 @@ export default function Practice() {
                                                                                 </button>
                                                                                 <button
                                                                                     onClick={() => {
-                                                                                        fetcher.submit(
+                                                                                        mainFetcher.submit(
                                                                                             { intent: "toggle-phrase-ignore", phraseId: phrase.id },
                                                                                             { method: "post" }
                                                                                         );
@@ -1079,9 +1510,14 @@ export default function Practice() {
                                                             >
                                                                 <div className="flex items-start justify-between gap-2">
                                                                     <div className="min-w-0 flex-1">
-                                                                        <p className="text-gray-600 font-medium text-xs mb-1 break-words">
-                                                                            🇻🇳 {conv.vietnameseText}
-                                                                        </p>
+                                                                        <div className="flex items-start gap-1.5 mb-1">
+                                                                            <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black shrink-0 ${(conv.speaker || "A") === "A" ? "bg-blue-100 text-blue-600" : "bg-purple-100 text-purple-600"}`}>
+                                                                                {conv.speaker || "A"}
+                                                                            </span>
+                                                                            <p className="text-gray-600 font-medium text-xs break-words flex-1">
+                                                                                🇻🇳 {conv.vietnameseText}
+                                                                            </p>
+                                                                        </div>
                                                                         <p className="text-gray-900 font-bold text-sm break-words">
                                                                             🇺🇸 {conv.englishText}
                                                                         </p>
@@ -1141,7 +1577,7 @@ export default function Practice() {
                                                                                             </button>
                                                                                             <button
                                                                                                 onClick={() => {
-                                                                                                    fetcher.submit(
+                                                                                                    mainFetcher.submit(
                                                                                                         { intent: "toggle-phrase-ignore", phraseId: phrase.id },
                                                                                                         { method: "post" }
                                                                                                     );
@@ -1326,7 +1762,7 @@ export default function Practice() {
                                     type="button"
                                     disabled={!selectedVocabTopicId || isLoading}
                                     onClick={() => {
-                                        fetcher.submit(
+                                        mainFetcher.submit(
                                             {
                                                 intent: "move-to-topic",
                                                 phraseId: movePhrase.id,

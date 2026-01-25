@@ -98,8 +98,8 @@ export async function action({ params, request }: Route.ActionArgs) {
 
         if (!topic) throw new Response("Not Found", { status: 404 });
 
-        if (!process.env.GEMINI_API_KEY) {
-            return { error: "Vui lòng cấu hình GEMINI_API_KEY trong file .env." };
+        if (!process.env.GEMINI_API_KEY_LEARN && !process.env.GEMINI_API_KEY) {
+            return { error: "Vui lòng cấu hình GEMINI_API_KEY hoặc GEMINI_API_KEY_LEARN trong file .env." };
         }
 
         try {
