@@ -1,120 +1,38 @@
-// LinguaFast Service Worker
-const CACHE_NAME = 'linguafast-v4';
-const STATIC_CACHE = 'linguafast-static-v4';
-const DYNAMIC_CACHE = 'linguafast-dynamic-v4';
+// LinguaFast Service Worker - Network Only (No Caching)
+// This version disables caching to ensure the app stays up-to-date and requires internet.
 
-// Static assets to cache
-const STATIC_ASSETS = [
-    '/',
-    '/manifest.json',
-    '/icons/icon-192x192.png',
-    '/icons/icon-512x512.png',
-];
+const CACHE_NAME = 'linguafast-no-cache-v1';
 
-// Install event - cache static assets
+// Install event - clear any existing caches
 self.addEventListener('install', (event) => {
-    console.log('[SW] Installing Service Worker...');
-    event.waitUntil(
-        caches.open(STATIC_CACHE).then((cache) => {
-            console.log('[SW] Caching static assets');
-            return cache.addAll(STATIC_ASSETS);
-        })
-    );
+    console.log('[SW] Installing and clearing old caches...');
     self.skipWaiting();
 });
 
-// Activate event - clean up old caches
+// Activate event - clean up ALL old caches
 self.addEventListener('activate', (event) => {
-    console.log('[SW] Activating Service Worker...');
+    console.log('[SW] Activating and deleting all caches...');
     event.waitUntil(
         caches.keys().then((keys) => {
             return Promise.all(
-                keys
-                    .filter((key) => key !== STATIC_CACHE && key !== DYNAMIC_CACHE)
-                    .map((key) => {
-                        console.log('[SW] Deleting old cache:', key);
-                        return caches.delete(key);
-                    })
+                keys.map((key) => {
+                    console.log('[SW] Deleting cache:', key);
+                    return caches.delete(key);
+                })
             );
         })
     );
     self.clients.claim();
 });
 
-// Fetch event - network first, fallback to cache
+// Fetch event - Network Only strategy
+// We don't intercept fetches to cache them anymore
 self.addEventListener('fetch', (event) => {
-    const { request } = event;
-    const url = new URL(request.url);
-
-    // Skip non-GET requests
-    if (request.method !== 'GET') {
-        return;
-    }
-
-    // Skip API and authentication requests
-    if (url.pathname.startsWith('/api') ||
-        url.pathname.includes('logout') ||
-        url.pathname.includes('login')) {
-        return;
-    }
-
-    // Skip caching JavaScript and CSS files (let browser handle these with proper cache headers)
-    // This prevents stale JS causing hydration errors
-    if (url.pathname.endsWith('.js') ||
-        url.pathname.endsWith('.css') ||
-        url.pathname.includes('/@vite') ||
-        url.pathname.includes('/node_modules/')) {
-        return; // Let browser fetch directly without SW intervention
-    }
-
-    // For HTML pages and Data requests - network first
-    const isDataRequest = url.search.includes('_data=') ||
-        request.headers.get('Accept')?.includes('application/json');
-
-    if (request.headers.get('accept')?.includes('text/html') || isDataRequest) {
-        event.respondWith(
-            fetch(request)
-                .then((response) => {
-                    // Only cache successful GET responses
-                    if (response.status === 200 && request.method === 'GET') {
-                        const responseClone = response.clone();
-                        caches.open(DYNAMIC_CACHE).then((cache) => {
-                            cache.put(request, responseClone);
-                        });
-                    }
-                    return response;
-                })
-                .catch(() => {
-                    // Fallback to cache
-                    return caches.match(request).then((cachedResponse) => {
-                        return cachedResponse || (isDataRequest ? null : caches.match('/'));
-                    });
-                })
-        );
-        return;
-    }
-
-    // For static assets (images, fonts, etc.) - cache first, fallback to network
-    event.respondWith(
-        caches.match(request).then((cachedResponse) => {
-            if (cachedResponse) {
-                return cachedResponse;
-            }
-            return fetch(request).then((response) => {
-                // Cache successful responses
-                if (response.status === 200 && request.method === 'GET') {
-                    const responseClone = response.clone();
-                    caches.open(DYNAMIC_CACHE).then((cache) => {
-                        cache.put(request, responseClone);
-                    });
-                }
-                return response;
-            });
-        })
-    );
+    // Let all requests go directly to the network
+    return;
 });
 
-// Push notification support
+// Push notification support (keeps working even without cache)
 self.addEventListener('push', (event) => {
     if (event.data) {
         const data = event.data.json();
@@ -144,7 +62,6 @@ self.addEventListener('notificationclick', (event) => {
         const url = event.notification.data?.url || '/';
         event.waitUntil(
             clients.matchAll({ type: 'window' }).then((clientList) => {
-                // Focus existing window or open new one
                 for (const client of clientList) {
                     if (client.url.includes(self.location.origin) && 'focus' in client) {
                         return client.focus();

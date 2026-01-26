@@ -100,11 +100,63 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Màn hình hiển thị khi không có internet
+function OfflineOverlay() {
+  const [isOffline, setIsOffline] = React.useState(false);
+
+  React.useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+
+    // Initial check
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setIsOffline(true);
+    }
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  if (!isOffline) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9999] bg-white flex flex-col items-center justify-center p-6 text-center animate-fadeIn">
+      <div className="w-24 h-24 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-6 text-4xl">
+        📡
+      </div>
+      <h2 className="text-2xl font-black text-slate-900 mb-2">Mất kết nối Internet</h2>
+      <p className="text-slate-500 mb-8 max-w-xs">
+        Vui lòng kiểm tra lại kết nối mạng của bạn để tiếp tục sử dụng LinguaFast.
+      </p>
+      <button
+        onClick={() => window.location.reload()}
+        className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all"
+      >
+        Tải lại trang
+      </button>
+    </div>
+  );
+}
+
 // Client-only wrapper for Toaster to avoid hydration issues
 function ClientToaster() {
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => {
     setMounted(true);
+
+    // Clean up old caches on mount (ensure fresh data)
+    if ('caches' in window) {
+      caches.keys().then((names) => {
+        for (let name of names) {
+          caches.delete(name);
+        }
+      });
+    }
   }, []);
   if (!mounted) return null;
   return <Toaster position="top-center" richColors />;
@@ -115,6 +167,7 @@ export default function App() {
     <>
       <Outlet />
       <ClientToaster />
+      <OfflineOverlay />
     </>
   );
 }

@@ -1448,41 +1448,45 @@ export default function Practice() {
                                                                         key={phrase.id}
                                                                         className={`p-4 ${phrase.isIgnored ? 'opacity-50' : ''}`}
                                                                     >
-                                                                        <div className="flex items-start justify-between gap-2">
-                                                                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                                                <button
-                                                                                    onClick={() => speakEnglish(phrase.english)}
-                                                                                    className="text-lg hover:scale-110 transition-transform shrink-0"
-                                                                                >
-                                                                                    🔊
-                                                                                </button>
-                                                                                <div className="min-w-0">
-                                                                                    <span className="font-bold text-gray-900">{phrase.english}</span>
-                                                                                    <span className="text-gray-400 text-sm ml-1">{phrase.phonetic}</span>
+                                                                        {/* Top row: Speaker icon + Full text */}
+                                                                        <div className="flex items-start gap-2.5 mb-2">
+                                                                            <button
+                                                                                onClick={() => speakEnglish(phrase.english)}
+                                                                                className="text-xl p-2 hover:bg-gray-200 rounded-lg transition-all shrink-0"
+                                                                                aria-label="Phát âm"
+                                                                            >
+                                                                                🔊
+                                                                            </button>
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <div className="mb-1">
+                                                                                    <span className="font-bold text-gray-900 text-base">{phrase.english}</span>
+                                                                                    <span className="text-gray-400 text-sm ml-2">{phrase.phonetic}</span>
                                                                                 </div>
-                                                                            </div>
-                                                                            <div className="flex items-center gap-2 shrink-0">
-                                                                                <button
-                                                                                    onClick={() => setMovePhrase(phrase)}
-                                                                                    className="text-xs px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-all"
-                                                                                    title="Lưu"
-                                                                                >
-                                                                                    📥 Lưu
-                                                                                </button>
-                                                                                <button
-                                                                                    onClick={() => {
-                                                                                        mainFetcher.submit(
-                                                                                            { intent: "toggle-phrase-ignore", phraseId: phrase.id },
-                                                                                            { method: "post" }
-                                                                                        );
-                                                                                    }}
-                                                                                    className="text-xs text-gray-400 hover:text-gray-600 px-1"
-                                                                                >
-                                                                                    {phrase.isIgnored ? "👁️" : "🙈"}
-                                                                                </button>
+                                                                                <p className="text-emerald-600 text-sm">{phrase.vietnamese}</p>
                                                                             </div>
                                                                         </div>
-                                                                        <p className="text-emerald-600 text-sm mt-1 pl-8">{phrase.vietnamese}</p>
+                                                                        {/* Bottom row: Action buttons */}
+                                                                        <div className="flex items-center gap-2 pl-11">
+                                                                            <button
+                                                                                onClick={() => setMovePhrase(phrase)}
+                                                                                className="text-xs px-2.5 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-all font-medium"
+                                                                                aria-label="Lưu vào bộ từ"
+                                                                            >
+                                                                                📥 Lưu
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    mainFetcher.submit(
+                                                                                        { intent: "toggle-phrase-ignore", phraseId: phrase.id },
+                                                                                        { method: "post" }
+                                                                                    );
+                                                                                }}
+                                                                                className="text-base text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg p-2 transition-all"
+                                                                                aria-label={phrase.isIgnored ? "Hiện từ" : "Ẩn từ"}
+                                                                            >
+                                                                                {phrase.isIgnored ? "👁️" : "🙈"}
+                                                                            </button>
+                                                                        </div>
                                                                     </div>
                                                                 ))}
                                                             </div>
@@ -1522,26 +1526,26 @@ export default function Practice() {
                                                                     : "hover:bg-gray-50 active:bg-gray-100"
                                                                     }`}
                                                             >
-                                                                <div className="flex items-start justify-between gap-2">
-                                                                    <div className="min-w-0 flex-1">
-                                                                        <div className="flex items-start gap-1.5 mb-1">
-                                                                            <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black shrink-0 ${(conv.speaker || "A") === "A" ? "bg-blue-100 text-blue-600" : "bg-purple-100 text-purple-600"}`}>
-                                                                                {conv.speaker || "A"}
-                                                                            </span>
-                                                                            <p className="text-gray-600 font-medium text-xs break-words flex-1">
-                                                                                🇻🇳 {conv.vietnameseText}
-                                                                            </p>
-                                                                        </div>
-                                                                        <p className="text-gray-900 font-bold text-sm break-words">
-                                                                            🇺🇸 {conv.englishText}
-                                                                        </p>
-                                                                    </div>
-                                                                    <div className="flex items-center gap-1 shrink-0 mt-1">
-                                                                        <span className="text-[10px] text-gray-400">{conv.phrases?.length || 0} từ</span>
-                                                                        <span className={`text-gray-400 transition-transform text-xs ${selectedConversationId === conv.id ? "rotate-180" : ""}`}>
+                                                                {/* Header row with speaker badge and expand indicator */}
+                                                                <div className="flex items-center justify-between gap-2 mb-1.5">
+                                                                    <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black shrink-0 ${(conv.speaker || "A") === "A" ? "bg-blue-100 text-blue-600" : "bg-purple-100 text-purple-600"}`}>
+                                                                        {conv.speaker || "A"}
+                                                                    </span>
+                                                                    <div className="flex items-center gap-1.5 shrink-0">
+                                                                        <span className="text-[10px] text-gray-400 font-medium">{conv.phrases?.length || 0} từ</span>
+                                                                        <span className={`text-gray-400 transition-transform text-sm ${selectedConversationId === conv.id ? "rotate-180" : ""}`}>
                                                                             ▼
                                                                         </span>
                                                                     </div>
+                                                                </div>
+                                                                {/* Content rows - full width without competing buttons */}
+                                                                <div className="space-y-1">
+                                                                    <p className="text-gray-600 font-medium text-xs break-words">
+                                                                        🇻🇳 {conv.vietnameseText}
+                                                                    </p>
+                                                                    <p className="text-gray-900 font-bold text-sm break-words">
+                                                                        🇺🇸 {conv.englishText}
+                                                                    </p>
                                                                 </div>
                                                             </button>
 
@@ -1570,10 +1574,11 @@ export default function Practice() {
                                                                                     className={`p-2.5 ${phrase.isIgnored ? 'opacity-50' : ''}`}
                                                                                 >
                                                                                     <div className="flex items-start justify-between gap-2">
-                                                                                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                                                                        <div className="flex items-center gap-2 min-w-0 flex-1">
                                                                                             <button
                                                                                                 onClick={() => speakEnglish(phrase.english)}
-                                                                                                className="text-sm hover:scale-110 transition-transform shrink-0 touch-target"
+                                                                                                className="text-xl p-2 hover:bg-gray-100 rounded-lg transition-all shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                                                                                                aria-label="Phát âm"
                                                                                             >
                                                                                                 🔊
                                                                                             </button>
@@ -1582,10 +1587,11 @@ export default function Practice() {
                                                                                                 <span className="text-gray-400 text-xs ml-1">{phrase.phonetic}</span>
                                                                                             </div>
                                                                                         </div>
-                                                                                        <div className="flex items-center gap-1 shrink-0">
+                                                                                        <div className="flex items-center gap-1.5 shrink-0">
                                                                                             <button
                                                                                                 onClick={() => setMovePhrase(phrase)}
-                                                                                                className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded transition-all"
+                                                                                                className="text-base px-2.5 py-2 bg-blue-100 text-blue-600 hover:bg-blue-200 rounded-lg transition-all min-w-[44px] min-h-[44px] flex items-center justify-center"
+                                                                                                aria-label="Lưu vào bộ từ"
                                                                                             >
                                                                                                 📥
                                                                                             </button>
@@ -1596,13 +1602,14 @@ export default function Practice() {
                                                                                                         { method: "post" }
                                                                                                     );
                                                                                                 }}
-                                                                                                className="text-[10px] text-gray-400 hover:text-gray-600 px-1"
+                                                                                                className="text-base text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg p-2 transition-all min-w-[44px] min-h-[44px] flex items-center justify-center"
+                                                                                                aria-label={phrase.isIgnored ? "Hiện từ" : "Ẩn từ"}
                                                                                             >
                                                                                                 {phrase.isIgnored ? "👁️" : "🙈"}
                                                                                             </button>
                                                                                         </div>
                                                                                     </div>
-                                                                                    <p className="text-emerald-600 text-xs mt-0.5 pl-5">{phrase.vietnamese}</p>
+                                                                                    <p className="text-emerald-600 text-xs mt-1 pl-0 leading-relaxed">{phrase.vietnamese}</p>
                                                                                 </div>
                                                                             ))}
                                                                     </div>

@@ -555,29 +555,29 @@ export default function Dictionary() {
                                                 <div
                                                     key={index}
                                                     onClick={() => toggleSelectLookupWord(index)}
-                                                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${isSelected
+                                                    className={`p-3 md:p-4 rounded-xl border-2 cursor-pointer transition-all ${isSelected
                                                         ? "border-primary bg-primary/5"
                                                         : "border-gray-100 hover:border-gray-200"
                                                         }`}
                                                 >
-                                                    <div className="flex items-center gap-3">
+                                                    <div className="flex items-center gap-2 md:gap-3">
                                                         <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${isSelected ? "bg-primary border-primary text-white" : "border-gray-300"}`}>
                                                             {isSelected && <span className="text-xs">✓</span>}
                                                         </div>
                                                         <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="font-black text-gray-900">{word.term}</span>
-                                                                <span className="text-xs text-gray-400">{word.phonetic}</span>
-                                                                <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 text-[9px] font-bold uppercase rounded">
+                                                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                                                <span className="font-black text-gray-900 text-sm md:text-base">{word.term}</span>
+                                                                <span className="text-[10px] md:text-xs text-gray-400">{word.phonetic}</span>
+                                                                <span className="px-1 py-0.5 bg-gray-100 text-gray-500 text-[8px] md:text-[9px] font-bold uppercase rounded">
                                                                     {word.type}
                                                                 </span>
                                                             </div>
-                                                            <p className="text-primary font-bold text-sm">{word.translation}</p>
-                                                            <p className="text-gray-400 text-xs truncate">{word.viDefinition}</p>
+                                                            <p className="text-primary font-bold text-xs md:text-sm truncate">{word.translation}</p>
                                                         </div>
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); speak(word.term); }}
-                                                            className="p-2 rounded-lg text-gray-400 hover:bg-primary/10 hover:text-primary transition-all"
+                                                            className="p-1.5 md:p-2 rounded-lg text-lg md:text-xl text-gray-400 hover:bg-primary/10 hover:text-primary transition-all shrink-0"
+                                                            aria-label="Phát âm"
                                                         >
                                                             🔊
                                                         </button>
@@ -647,84 +647,89 @@ export default function Dictionary() {
                                     {/* Compact Row */}
                                     <div
                                         onClick={() => toggleExpand(word.id)}
-                                        className={`flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-gray-50 transition-colors ${isExpanded ? 'bg-primary/5' : ''}`}
+                                        className={`flex items-center gap-2 md:gap-4 px-3 md:px-5 py-4 cursor-pointer hover:bg-gray-50 transition-colors ${isExpanded ? 'bg-primary/5' : ''}`}
                                     >
-                                        {/* Term */}
+                                        {/* Term - English */}
                                         <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-black text-gray-900 text-lg truncate">{word.term}</span>
+                                            <div className="flex items-center gap-1 md:gap-2">
+                                                <span className="font-black text-gray-900 text-base md:text-lg truncate">{word.term}</span>
                                                 <span className="text-gray-400 text-xs font-medium hidden sm:inline">{word.phonetic}</span>
                                             </div>
                                         </div>
 
-                                        {/* Translation */}
-                                        <div className="flex-1 min-w-0 text-right sm:text-left">
-                                            <span className="font-bold text-primary truncate">{word.translation || "—"}</span>
+                                        {/* Translation - Vietnamese */}
+                                        <div className="flex-1 min-w-0 text-right sm:text-left mr-2">
+                                            <span className="font-bold text-primary text-sm md:text-base truncate block">{word.translation || "—"}</span>
                                         </div>
 
-                                        {/* Type badge */}
-                                        <span className="hidden md:inline px-2 py-0.5 bg-gray-100 text-gray-500 text-[10px] font-black uppercase rounded">
+                                        {/* Type badge - desktop only */}
+                                        <span className="hidden md:inline px-2 py-0.5 bg-gray-100 text-gray-500 text-[10px] font-black uppercase rounded shrink-0">
                                             {word.type}
                                         </span>
 
-                                        {/* Add to topic button */}
-                                        <div className="relative">
+                                        {/* Action buttons group - compact on mobile */}
+                                        <div className="flex items-center gap-0.5 md:gap-1 shrink-0">
+                                            {/* Add to topic button */}
+                                            <div className="relative">
+                                                <button
+                                                    onClick={(e) => toggleAddToTopic(word.id, e)}
+                                                    className={`p-1.5 md:p-2 rounded-lg transition-all text-lg md:text-xl ${showAddDropdown ? 'bg-primary text-white' : 'text-gray-400 hover:bg-emerald-100 hover:text-emerald-600'}`}
+                                                    title="Thêm vào chủ đề khác"
+                                                    aria-label="Thêm vào chủ đề"
+                                                >
+                                                    📁
+                                                </button>
+
+                                                {/* Dropdown */}
+                                                {showAddDropdown && (
+                                                    <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-2xl border border-gray-100 z-50 animate-fadeIn overflow-hidden">
+                                                        <div className="p-3 border-b border-gray-100 bg-gray-50">
+                                                            <p className="text-xs font-black text-gray-500 uppercase">Thêm "{word.term}" vào:</p>
+                                                        </div>
+                                                        <div className="max-h-48 overflow-y-auto">
+                                                            {otherTopics.length === 0 ? (
+                                                                <p className="p-4 text-sm text-gray-400 text-center">Không có chủ đề khác</p>
+                                                            ) : (
+                                                                otherTopics.map(topic => (
+                                                                    <div key={topic.id} className="flex items-center gap-2 p-2 hover:bg-gray-50 border-b border-gray-50 last:border-0">
+                                                                        <span className="flex-1 text-sm font-medium text-gray-700 truncate">
+                                                                            {topic.viTitle || topic.title}
+                                                                        </span>
+                                                                        <button
+                                                                            onClick={(e) => handleWordAction(word.id, topic.id, 'copy', e)}
+                                                                            className="px-2 py-1 text-[10px] font-bold bg-emerald-100 text-emerald-600 rounded hover:bg-emerald-200 transition-colors"
+                                                                        >
+                                                                            Sao chép
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={(e) => handleWordAction(word.id, topic.id, 'move', e)}
+                                                                            className="px-2 py-1 text-[10px] font-bold bg-blue-100 text-blue-600 rounded hover:bg-blue-200 transition-colors"
+                                                                        >
+                                                                            Chuyển
+                                                                        </button>
+                                                                    </div>
+                                                                ))
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Speak button */}
                                             <button
-                                                onClick={(e) => toggleAddToTopic(word.id, e)}
-                                                className={`p-2 rounded-lg transition-all flex-shrink-0 ${showAddDropdown ? 'bg-primary text-white' : 'text-gray-400 hover:bg-emerald-100 hover:text-emerald-600'}`}
-                                                title="Thêm vào chủ đề khác"
+                                                onClick={(e) => speak(word.term, e)}
+                                                className="p-1.5 md:p-2 rounded-lg text-lg md:text-xl text-gray-400 hover:bg-primary/10 hover:text-primary transition-all"
+                                                title="Phát âm"
+                                                aria-label="Phát âm"
                                             >
-                                                📁
+                                                🔊
                                             </button>
 
-                                            {/* Dropdown */}
-                                            {showAddDropdown && (
-                                                <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-2xl border border-gray-100 z-50 animate-fadeIn overflow-hidden">
-                                                    <div className="p-3 border-b border-gray-100 bg-gray-50">
-                                                        <p className="text-xs font-black text-gray-500 uppercase">Thêm "{word.term}" vào:</p>
-                                                    </div>
-                                                    <div className="max-h-48 overflow-y-auto">
-                                                        {otherTopics.length === 0 ? (
-                                                            <p className="p-4 text-sm text-gray-400 text-center">Không có chủ đề khác</p>
-                                                        ) : (
-                                                            otherTopics.map(topic => (
-                                                                <div key={topic.id} className="flex items-center gap-2 p-2 hover:bg-gray-50 border-b border-gray-50 last:border-0">
-                                                                    <span className="flex-1 text-sm font-medium text-gray-700 truncate">
-                                                                        {topic.viTitle || topic.title}
-                                                                    </span>
-                                                                    <button
-                                                                        onClick={(e) => handleWordAction(word.id, topic.id, 'copy', e)}
-                                                                        className="px-2 py-1 text-[10px] font-bold bg-emerald-100 text-emerald-600 rounded hover:bg-emerald-200 transition-colors"
-                                                                    >
-                                                                        Sao chép
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={(e) => handleWordAction(word.id, topic.id, 'move', e)}
-                                                                        className="px-2 py-1 text-[10px] font-bold bg-blue-100 text-blue-600 rounded hover:bg-blue-200 transition-colors"
-                                                                    >
-                                                                        Chuyển
-                                                                    </button>
-                                                                </div>
-                                                            ))
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            )}
+                                            {/* Expand indicator */}
+                                            <span className={`text-gray-300 text-base md:text-lg transition-transform px-1 ${isExpanded ? 'rotate-180' : ''}`}>
+                                                ▼
+                                            </span>
                                         </div>
-
-                                        {/* Speak button */}
-                                        <button
-                                            onClick={(e) => speak(word.term, e)}
-                                            className="p-2 rounded-lg text-gray-400 hover:bg-primary/10 hover:text-primary transition-all flex-shrink-0"
-                                            title="Phát âm"
-                                        >
-                                            🔊
-                                        </button>
-
-                                        {/* Expand indicator */}
-                                        <span className={`text-gray-300 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
-                                            ▼
-                                        </span>
                                     </div>
 
                                     {/* Expanded Detail */}
