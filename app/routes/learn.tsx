@@ -228,6 +228,34 @@ export default function Learn() {
     const [aiWordCount, setAiWordCount] = useState(5);
     const [filter, setFilter] = useState<"active" | "ignored" | "all">("active");
 
+    // Local state for optimistic updates
+    const [localWordStatus, setLocalWordStatus] = useState<Record<string, { isSelected: boolean, isIgnored: boolean }>>(() => {
+        const statuses: Record<string, { isSelected: boolean, isIgnored: boolean }> = {};
+        allWords.forEach((w: any) => {
+            statuses[w.id] = {
+                isSelected: w.progress?.[0]?.isSelected || false,
+                isIgnored: w.progress?.[0]?.isIgnored || false
+            };
+        });
+        return statuses;
+    });
+
+    // Sync with loader data when idle
+    useEffect(() => {
+        if (fetcher.state === "idle") {
+            setLocalWordStatus(prev => {
+                const next = { ...prev };
+                allWords.forEach((w: any) => {
+                    next[w.id] = {
+                        isSelected: w.progress?.[0]?.isSelected || false,
+                        isIgnored: w.progress?.[0]?.isIgnored || false
+                    };
+                });
+                return next;
+            });
+        }
+    }, [allWords, fetcher.state]);
+
     // Toast notifications
     const lastToastId = useRef<string | null>(null);
     useEffect(() => {
@@ -259,22 +287,29 @@ export default function Learn() {
     // Derived words based on what's ignored
     const words = useMemo(() => {
         return allWords.filter(w => {
-            const isIgnored = w.progress?.[0]?.isIgnored || false;
+            const status = localWordStatus[w.id] || { isIgnored: false, isSelected: false };
+            const isIgnored = status.isIgnored;
             if (filter === "active") return !isIgnored;
             if (filter === "ignored") return isIgnored;
             return true;
         });
-    }, [allWords, filter]);
+    }, [allWords, filter, localWordStatus]);
 
     // Active words for learning (non-ignored AND selected)
     const activeWords = useMemo(() => {
-        return allWords.filter(w =>
-            !(w.progress[0]?.isIgnored || false) &&
-            w.progress[0]?.isSelected
-        );
-    }, [allWords]);
+        return allWords.filter(w => {
+            const status = localWordStatus[w.id] || { isIgnored: false, isSelected: false };
+            return !status.isIgnored && status.isSelected;
+        });
+    }, [allWords, localWordStatus]);
 
     const toggleWordSelection = (wordId: string, currentSelected: boolean) => {
+        // Optimistic update
+        setLocalWordStatus(prev => ({
+            ...prev,
+            [wordId]: { ...prev[wordId], isSelected: !currentSelected }
+        }));
+
         fetcher.submit(
             { intent: "toggle-select-word", wordId, isSelected: String(currentSelected) },
             { method: "post" }
@@ -282,10 +317,34 @@ export default function Learn() {
     };
 
     const toggleSelectAll = () => {
-        const nonIgnored = allWords.filter(w => !(w.progress[0]?.isIgnored || false));
-        const allSelected = nonIgnored.every(w => w.progress[0]?.isSelected);
+        const nonIgnored = allWords.filter(w => !localWordStatus[w.id]?.isIgnored);
+        const allSelected = nonIgnored.every(w => localWordStatus[w.id]?.isSelected);
+        const nextSelected = !allSelected;
+
+        // Optimistic update
+        setLocalWordStatus(prev => {
+            const next = { ...prev };
+            nonIgnored.forEach(w => {
+                next[w.id] = { ...next[w.id], isSelected: nextSelected };
+            });
+            return next;
+        });
+
         fetcher.submit(
             { intent: "toggle-select-all", select: String(!allSelected) },
+            { method: "post" }
+        );
+    };
+
+    const toggleIgnoreWord = (wordId: string, currentIgnored: boolean) => {
+        // Optimistic update
+        setLocalWordStatus(prev => ({
+            ...prev,
+            [wordId]: { isIgnored: !currentIgnored, isSelected: false }
+        }));
+
+        fetcher.submit(
+            { intent: "toggle-ignore-word", wordId, isIgnored: String(currentIgnored) },
             { method: "post" }
         );
     };
@@ -560,7 +619,7 @@ export default function Learn() {
                                                 onClick={toggleSelectAll}
                                                 className="px-2 md:px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all text-slate-500 hover:bg-white hover:text-slate-800 whitespace-nowrap"
                                             >
-                                                {allWords.filter((w: any) => !w.progress[0]?.isIgnored && w.progress[0]?.isSelected).length === allWords.filter((w: any) => !w.progress[0]?.isIgnored).length ? "🧊 Bỏ chọn" : "✅ Chọn hết"}
+                                                {allWords.filter((w: any) => !localWordStatus[w.id]?.isIgnored && localWordStatus[w.id]?.isSelected).length === allWords.filter((w: any) => !localWordStatus[w.id]?.isIgnored).length ? "🧊 Bỏ chọn" : "✅ Chọn hết"}
                                             </button>
                                         </div>
                                         <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 flex-shrink-0">
@@ -638,8 +697,9 @@ export default function Learn() {
                                     <p className="text-gray-500 font-medium max-w-sm mx-auto">Sử dụng nút "✨ AI Tạo" ở trên để tự động tạo danh sách từ vựng thông minh cho chủ đề này!</p>
                                 </div>
                             ) : words.map((w: any, idx: number) => {
-                                const isIgnored = w.progress[0]?.isIgnored || false;
-                                const isSelected = w.progress[0]?.isSelected || false;
+                                const status = localWordStatus[w.id] || { isIgnored: false, isSelected: false };
+                                const isIgnored = status.isIgnored;
+                                const isSelected = status.isSelected;
                                 return (
                                     <div key={w.id} className={`p-4 md:p-6 transition-all group border-b border-gray-50 last:border-0 ${isIgnored ? 'bg-gray-100/50 opacity-60' : isSelected ? 'bg-primary/[0.02]' : 'hover:bg-gray-50'}`}>
                                         <div className="flex gap-3 md:gap-6">
@@ -659,29 +719,24 @@ export default function Learn() {
                                                     {idx + 1}
                                                 </div>
 
-                                                <fetcher.Form method="post">
-                                                    <input type="hidden" name="intent" value="toggle-ignore-word" />
-                                                    <input type="hidden" name="wordId" value={w.id} />
-                                                    <input type="hidden" name="isIgnored" value={String(isIgnored)} />
-                                                    <button
-                                                        type="submit"
-                                                        title={isIgnored ? "Khôi phục từ" : "Bỏ qua từ này"}
-                                                        className={`w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center transition-all touch-target ${isIgnored
-                                                            ? "bg-green-100 text-green-600 hover:bg-green-200"
-                                                            : "bg-red-50 text-red-300 hover:bg-red-500 hover:text-white"
-                                                            }`}
-                                                    >
-                                                        {isIgnored ? (
-                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 md:h-5 md:w-5" viewBox="0 0 20 20" fill="currentColor">
-                                                                <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-                                                            </svg>
-                                                        ) : (
-                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 md:h-5 md:w-5" viewBox="0 0 20 20" fill="currentColor">
-                                                                <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                                                            </svg>
-                                                        )}
-                                                    </button>
-                                                </fetcher.Form>
+                                                <button
+                                                    onClick={() => toggleIgnoreWord(w.id, isIgnored)}
+                                                    title={isIgnored ? "Khôi phục từ" : "Bỏ qua từ này"}
+                                                    className={`w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center transition-all touch-target ${isIgnored
+                                                        ? "bg-green-100 text-green-600 hover:bg-green-200"
+                                                        : "bg-red-50 text-red-300 hover:bg-red-500 hover:text-white"
+                                                        }`}
+                                                >
+                                                    {isIgnored ? (
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 md:h-5 md:w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                            <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                                                        </svg>
+                                                    ) : (
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 md:h-5 md:w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                            <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                                                        </svg>
+                                                    )}
+                                                </button>
                                             </div>
 
                                             {/* Right side - Word content */}
