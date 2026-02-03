@@ -256,6 +256,89 @@ export async function action({ request }: Route.ActionArgs) {
         }
     }
 
+    // Regenerate phrases for a conversation (delete old and create new)
+    if (intent === "regen-phrases") {
+        const conversationId = formData.get("conversationId") as string;
+
+        if (!conversationId) {
+            return { error: "Thiếu ID cuộc hội thoại.", intent };
+        }
+
+        try {
+            // Get the conversation
+            const conversation = await prisma.conversation.findUnique({
+                where: { id: conversationId },
+                include: { topic: true }
+            });
+
+            if (!conversation) {
+                return { error: "Không tìm thấy cuộc hội thoại.", intent };
+            }
+
+            // Delete existing phrases for this conversation
+            await prisma.phrase.deleteMany({
+                where: { conversationId: conversationId }
+            });
+
+            // Re-analyze and create new phrases
+            const { analyzeTranslation } = await import("../utils/ai.server");
+            const phrases = await analyzeTranslation(conversation.englishText, conversation.vietnameseText);
+
+            // Save new phrases
+            const savedPhrases: string[] = [];
+            for (const phrase of phrases) {
+                try {
+                    await prisma.phrase.create({
+                        data: {
+                            topicId: conversation.topicId,
+                            conversationId: conversationId,
+                            english: phrase.english,
+                            vietnamese: phrase.vietnamese,
+                            phonetic: phrase.phonetic,
+                            partOfSpeech: phrase.partOfSpeech,
+                            example: phrase.example,
+                            viExample: phrase.viExample
+                        }
+                    });
+                    savedPhrases.push(phrase.english);
+
+                    // Also update/create in global dictionary
+                    const dictExisting = await prisma.word.findFirst({
+                        where: { term: { equals: phrase.english, mode: "insensitive" } }
+                    });
+
+                    if (!dictExisting) {
+                        await prisma.word.create({
+                            data: {
+                                term: phrase.english,
+                                phonetic: phrase.phonetic,
+                                type: phrase.partOfSpeech,
+                                definition: phrase.example || phrase.english,
+                                viDefinition: phrase.vietnamese,
+                                translation: phrase.vietnamese,
+                                example: phrase.example || `Example: "${phrase.english}"`,
+                                viExample: phrase.viExample
+                            } as any
+                        });
+                    }
+                } catch (e) {
+                    console.log(`[Practice] Error saving phrase ${phrase.english}:`, e);
+                }
+            }
+
+            return {
+                success: true,
+                intent,
+                phrases,
+                conversationId,
+                savedPhrases,
+                message: `Đã tạo lại ${savedPhrases.length} từ vựng thành công!`
+            };
+        } catch (error: any) {
+            return { error: error.message || "Lỗi khi tạo lại từ vựng.", intent };
+        }
+    }
+
     // Toggle phrase ignored status
     if (intent === "toggle-phrase-ignore") {
         const phraseId = formData.get("phraseId") as string;
@@ -532,6 +615,7 @@ export default function Practice() {
     const analysisFetcher = useFetcher<typeof action>();
     const suggestionFetcher = useFetcher<typeof action>();
     const autoSuggestFetcher = useFetcher<typeof action>(); // For background suggestion generation
+    const regenFetcher = useFetcher<typeof action>(); // For regenerating phrases
 
     const { isListening, transcript, isSupported, startListening, stopListening, setTranscript } = useSpeechRecognition();
 
@@ -563,6 +647,7 @@ export default function Practice() {
     const isMainLoading = mainFetcher.state !== "idle";
     const isTranslationLoading = translationFetcher.state !== "idle";
     const isAnalysisLoading = analysisFetcher.state !== "idle";
+    const isRegenLoading = regenFetcher.state !== "idle";
     const isLoading = isMainLoading || isTranslationLoading || isAnalysisLoading;
     const isProcessing = isTranslationLoading || isAnalysisLoading;
 
@@ -804,6 +889,34 @@ export default function Practice() {
             }
         }
     }, [suggestionFetcher.state, suggestionFetcher.data]);
+
+    // Handle regen fetcher results
+    const lastRegenDataRef = useRef<any>(null);
+    useEffect(() => {
+        // Only process if we have new data that hasn't been processed
+        if (regenFetcher.state === "idle" && regenFetcher.data && regenFetcher.data !== lastRegenDataRef.current) {
+            lastRegenDataRef.current = regenFetcher.data;
+            
+            if (regenFetcher.data.error) {
+                toast.error(regenFetcher.data.error);
+            } else if (regenFetcher.data.intent === "regen-phrases" && regenFetcher.data.success) {
+                const data = regenFetcher.data as any;
+                // Update currentResult - use functional update to get latest selectedConversationId
+                setCurrentResult(prev => {
+                    if (prev && data.conversationId) {
+                        return {
+                            ...prev,
+                            phrases: data.phrases
+                        };
+                    }
+                    return prev;
+                });
+                toast.success(data.message || `Đã tạo lại ${data.savedPhrases?.length || 0} từ vựng!`);
+                // Revalidate to refresh the conversation list with new phrases
+                revalidator.revalidate();
+            }
+        }
+    }, [regenFetcher.state, regenFetcher.data]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -1297,12 +1410,53 @@ export default function Practice() {
                                         </div>
 
                                         <div className="p-6">
-                                            <h3 className="text-lg font-black text-gray-900 mb-4">
-                                                📚 Từ vựng {selectedConversationId ? "của câu này" : "đã lưu"}
-                                                <span className="text-gray-400 font-normal text-sm ml-2">
-                                                    ({currentResult.phrases.length} từ/cụm)
-                                                </span>
-                                            </h3>
+                                            <div className="flex items-center justify-between mb-4">
+                                                <h3 className="text-lg font-black text-gray-900">
+                                                    📚 Từ vựng {selectedConversationId ? "của câu này" : "đã lưu"}
+                                                    <span className="text-gray-400 font-normal text-sm ml-2">
+                                                        ({currentResult.phrases.length} từ/cụm)
+                                                    </span>
+                                                </h3>
+                                                {/* Action buttons group */}
+                                                <div className="flex items-center gap-1.5">
+                                                    {selectedConversationId && (
+                                                        <button
+                                                            onClick={() => {
+                                                                regenFetcher.submit(
+                                                                    { intent: "regen-phrases", conversationId: selectedConversationId },
+                                                                    { method: "post" }
+                                                                );
+                                                            }}
+                                                            disabled={isRegenLoading || isAnalysisLoading}
+                                                            className="px-3 py-1.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold text-xs md:text-sm rounded-lg hover:shadow-md active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                                                            title="Tạo lại từ vựng nếu bị lỗi"
+                                                        >
+                                                            {isRegenLoading ? (
+                                                                <>
+                                                                    <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                                    </svg>
+                                                                    Đang tạo...
+                                                                </>
+                                                            ) : (
+                                                                <>🔄 Regen</>
+                                                            )}
+                                                        </button>
+                                                    )}
+                                                    {/* Close button */}
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedConversationId(null);
+                                                            setCurrentResult(null);
+                                                        }}
+                                                        className="w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 rounded-lg transition-all text-sm font-bold"
+                                                        title="Đóng"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            </div>
                                             <div className="space-y-3 md:space-y-4">
                                                 {currentResult.phrases.length === 0 ? (
                                                     <div className="py-12 flex flex-col items-center justify-center bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
@@ -1418,24 +1572,65 @@ export default function Practice() {
                                                                 {filteredPhrases.length > ITEMS_PER_PAGE && ` • Hiển ${paginatedPhrases.length}/${filteredPhrases.length}`}
                                                             </p>
                                                         </div>
-                                                        <label className="flex items-center gap-2 text-sm shrink-0">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={showIgnored}
-                                                                onChange={(e) => setShowIgnored(e.target.checked)}
-                                                                className="rounded w-4 h-4"
-                                                            />
-                                                            <span className="text-gray-500">Hiện đã ẩn</span>
-                                                        </label>
+                                                        <div className="flex items-center gap-3 shrink-0">
+                                                            {/* Checkbox for showing ignored */}
+                                                            <label className="flex items-center gap-2 text-sm">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={showIgnored}
+                                                                    onChange={(e) => setShowIgnored(e.target.checked)}
+                                                                    className="rounded w-4 h-4"
+                                                                />
+                                                                <span className="text-gray-500">Hiện đã ẩn</span>
+                                                            </label>
+                                                            {/* Action buttons group */}
+                                                            {selectedConversationId && (
+                                                                <div className="flex items-center gap-1.5 pl-2 border-l border-gray-200">
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            regenFetcher.submit(
+                                                                                { intent: "regen-phrases", conversationId: selectedConversationId },
+                                                                                { method: "post" }
+                                                                            );
+                                                                        }}
+                                                                        disabled={isRegenLoading}
+                                                                        className="px-3 py-1.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold text-sm rounded-lg hover:shadow-md active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                                                                        title="Tạo lại từ vựng nếu bị lỗi"
+                                                                    >
+                                                                        {isRegenLoading ? (
+                                                                            <>
+                                                                                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                                                </svg>
+                                                                                Đang tạo...
+                                                                            </>
+                                                                        ) : (
+                                                                            <>🔄 Regen</>
+                                                                        )}
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setSelectedConversationId(null);
+                                                                            setCurrentResult(null);
+                                                                        }}
+                                                                        className="w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 rounded-lg transition-all text-sm font-bold"
+                                                                        title="Đóng"
+                                                                    >
+                                                                        ✕
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 <div className="max-h-[400px] overflow-y-auto">
                                                     {allDisplayPhrases.length === 0 ? (
                                                         <div className="p-8 text-center">
                                                             <div className="text-4xl mb-3">📝</div>
-                                                            <p className="text-gray-400 text-sm">
+                                                            <p className="text-gray-400 text-sm mb-3">
                                                                 {selectedConversationId
-                                                                    ? "Chưa có từ vựng"
+                                                                    ? "Chưa có từ vựng. Nhấn nút 🔄 Regen để tạo lại."
                                                                     : "Chưa có từ vựng nào"
                                                                 }
                                                             </p>
@@ -1550,78 +1745,126 @@ export default function Practice() {
                                                             </button>
 
                                                             {/* Inline vocabulary - shown when selected */}
-                                                            {selectedConversationId === conv.id && conv.phrases && conv.phrases.length > 0 && (
+                                                            {selectedConversationId === conv.id && (
                                                                 <div className="bg-emerald-50/50 border-l-4 border-emerald-400">
-                                                                    <div className="p-2 bg-emerald-100/50 flex items-center justify-between">
-                                                                        <span className="text-xs font-bold text-emerald-700">📚 Từ vựng ({conv.phrases.length})</span>
-                                                                        <label className="flex items-center gap-1 text-[10px]">
-                                                                            <input
-                                                                                type="checkbox"
-                                                                                checked={showIgnored}
-                                                                                onChange={(e) => setShowIgnored(e.target.checked)}
-                                                                                className="rounded w-3 h-3"
-                                                                            />
-                                                                            <span className="text-emerald-600">Hiện ẩn</span>
-                                                                        </label>
-                                                                    </div>
-                                                                    <div className="divide-y divide-emerald-100/50">
-                                                                        {conv.phrases
-                                                                            .filter((p: any) => showIgnored || !p.isIgnored)
-                                                                            .slice(0, phrasesPage * ITEMS_PER_PAGE)
-                                                                            .map((phrase: any) => (
-                                                                                <div
-                                                                                    key={phrase.id}
-                                                                                    className={`p-2.5 ${phrase.isIgnored ? 'opacity-50' : ''}`}
+                                                                    <div className="p-2 bg-emerald-100/50 flex items-center justify-between gap-2">
+                                                                        <span className="text-xs font-bold text-emerald-700">📚 Từ vựng ({conv.phrases?.length || 0})</span>
+                                                                        <div className="flex items-center gap-2">
+                                                                            {/* Checkbox for showing ignored */}
+                                                                            {conv.phrases && conv.phrases.length > 0 && (
+                                                                                <label className="flex items-center gap-1 text-[10px]">
+                                                                                    <input
+                                                                                        type="checkbox"
+                                                                                        checked={showIgnored}
+                                                                                        onChange={(e) => setShowIgnored(e.target.checked)}
+                                                                                        className="rounded w-3 h-3"
+                                                                                    />
+                                                                                    <span className="text-emerald-600">Hiện ẩn</span>
+                                                                                </label>
+                                                                            )}
+                                                                            {/* Action buttons group */}
+                                                                            <div className="flex items-center gap-1">
+                                                                                <button
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        regenFetcher.submit(
+                                                                                            { intent: "regen-phrases", conversationId: conv.id },
+                                                                                            { method: "post" }
+                                                                                        );
+                                                                                    }}
+                                                                                    disabled={isRegenLoading}
+                                                                                    className="px-2 py-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold text-[10px] rounded-md hover:shadow-md active:scale-[0.98] transition-all disabled:opacity-50 flex items-center gap-1"
+                                                                                    title="Tạo lại từ vựng"
                                                                                 >
-                                                                                    <div className="flex items-start justify-between gap-2">
-                                                                                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                                                            <button
-                                                                                                onClick={() => speakEnglish(phrase.english)}
-                                                                                                className="text-xl p-2 hover:bg-gray-100 rounded-lg transition-all shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center"
-                                                                                                aria-label="Phát âm"
-                                                                                            >
-                                                                                                🔊
-                                                                                            </button>
-                                                                                            <div className="min-w-0">
-                                                                                                <span className="font-bold text-gray-900 text-sm">{phrase.english}</span>
-                                                                                                <span className="text-gray-400 text-xs ml-1">{phrase.phonetic}</span>
-                                                                                            </div>
-                                                                                        </div>
-                                                                                        <div className="flex items-center gap-1.5 shrink-0">
-                                                                                            <button
-                                                                                                onClick={() => setMovePhrase(phrase)}
-                                                                                                className="text-base px-2.5 py-2 bg-blue-100 text-blue-600 hover:bg-blue-200 rounded-lg transition-all min-w-[44px] min-h-[44px] flex items-center justify-center"
-                                                                                                aria-label="Lưu vào bộ từ"
-                                                                                            >
-                                                                                                📥
-                                                                                            </button>
-                                                                                            <button
-                                                                                                onClick={() => {
-                                                                                                    mainFetcher.submit(
-                                                                                                        { intent: "toggle-phrase-ignore", phraseId: phrase.id },
-                                                                                                        { method: "post" }
-                                                                                                    );
-                                                                                                }}
-                                                                                                className="text-base text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg p-2 transition-all min-w-[44px] min-h-[44px] flex items-center justify-center"
-                                                                                                aria-label={phrase.isIgnored ? "Hiện từ" : "Ẩn từ"}
-                                                                                            >
-                                                                                                {phrase.isIgnored ? "👁️" : "🙈"}
-                                                                                            </button>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                    <p className="text-emerald-600 text-xs mt-1 pl-0 leading-relaxed">{phrase.vietnamese}</p>
-                                                                                </div>
-                                                                            ))}
-                                                                    </div>
-                                                                    {conv.phrases.filter((p: any) => showIgnored || !p.isIgnored).length > phrasesPage * ITEMS_PER_PAGE && (
-                                                                        <div className="p-2 border-t border-emerald-100">
-                                                                            <button
-                                                                                onClick={() => setPhrasesPage(prev => prev + 1)}
-                                                                                className="w-full py-1.5 text-xs font-bold text-emerald-600 hover:bg-emerald-100 rounded transition-all"
-                                                                            >
-                                                                                Xem thêm từ...
-                                                                            </button>
+                                                                                    {isRegenLoading ? (
+                                                                                        <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                                                        </svg>
+                                                                                    ) : (
+                                                                                        <>🔄</>
+                                                                                    )}
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        setSelectedConversationId(null);
+                                                                                        setCurrentResult(null);
+                                                                                    }}
+                                                                                    className="w-6 h-6 flex items-center justify-center bg-gray-200 hover:bg-gray-300 text-gray-600 hover:text-gray-800 rounded-full transition-all text-xs font-bold"
+                                                                                    title="Đóng"
+                                                                                >
+                                                                                    ✕
+                                                                                </button>
+                                                                            </div>
                                                                         </div>
+                                                                    </div>
+                                                                    {(!conv.phrases || conv.phrases.length === 0) ? (
+                                                                        <div className="p-4 text-center text-gray-500 text-xs">
+                                                                            <p className="mb-2">⚠️ Chưa có từ vựng. Nhấn 🔄 để tạo lại.</p>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <>
+                                                                            <div className="divide-y divide-emerald-100/50">
+                                                                                {conv.phrases
+                                                                                    .filter((p: any) => showIgnored || !p.isIgnored)
+                                                                                    .slice(0, phrasesPage * ITEMS_PER_PAGE)
+                                                                                    .map((phrase: any) => (
+                                                                                        <div
+                                                                                            key={phrase.id}
+                                                                                            className={`p-2.5 ${phrase.isIgnored ? 'opacity-50' : ''}`}
+                                                                                        >
+                                                                                            <div className="flex items-start justify-between gap-2">
+                                                                                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                                                                    <button
+                                                                                                        onClick={() => speakEnglish(phrase.english)}
+                                                                                                        className="text-xl p-2 hover:bg-gray-100 rounded-lg transition-all shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                                                                                                        aria-label="Phát âm"
+                                                                                                    >
+                                                                                                        🔊
+                                                                                                    </button>
+                                                                                                    <div className="min-w-0">
+                                                                                                        <span className="font-bold text-gray-900 text-sm">{phrase.english}</span>
+                                                                                                        <span className="text-gray-400 text-xs ml-1">{phrase.phonetic}</span>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                                                                    <button
+                                                                                                        onClick={() => setMovePhrase(phrase)}
+                                                                                                        className="text-base px-2.5 py-2 bg-blue-100 text-blue-600 hover:bg-blue-200 rounded-lg transition-all min-w-[44px] min-h-[44px] flex items-center justify-center"
+                                                                                                        aria-label="Lưu vào bộ từ"
+                                                                                                    >
+                                                                                                        📥
+                                                                                                    </button>
+                                                                                                    <button
+                                                                                                        onClick={() => {
+                                                                                                            mainFetcher.submit(
+                                                                                                                { intent: "toggle-phrase-ignore", phraseId: phrase.id },
+                                                                                                                { method: "post" }
+                                                                                                            );
+                                                                                                        }}
+                                                                                                        className="text-base text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg p-2 transition-all min-w-[44px] min-h-[44px] flex items-center justify-center"
+                                                                                                        aria-label={phrase.isIgnored ? "Hiện từ" : "Ẩn từ"}
+                                                                                                    >
+                                                                                                        {phrase.isIgnored ? "👁️" : "🙈"}
+                                                                                                    </button>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                            <p className="text-emerald-600 text-xs mt-1 pl-0 leading-relaxed">{phrase.vietnamese}</p>
+                                                                                        </div>
+                                                                                    ))}
+                                                                            </div>
+                                                                            {conv.phrases.filter((p: any) => showIgnored || !p.isIgnored).length > phrasesPage * ITEMS_PER_PAGE && (
+                                                                                <div className="p-2 border-t border-emerald-100">
+                                                                                    <button
+                                                                                        onClick={() => setPhrasesPage(prev => prev + 1)}
+                                                                                        className="w-full py-1.5 text-xs font-bold text-emerald-600 hover:bg-emerald-100 rounded transition-all"
+                                                                                    >
+                                                                                        Xem thêm từ...
+                                                                                    </button>
+                                                                                </div>
+                                                                            )}
+                                                                        </>
                                                                     )}
                                                                 </div>
                                                             )}
