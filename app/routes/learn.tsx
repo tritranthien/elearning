@@ -78,7 +78,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
         // Fallback to existing topic if auto-select fails
     }
 
-    console.log(`Loaded topic: ${topic.title}, Words: ${topic.words.length}`);
+    console.log(`Loaded topic: ${topic.viTitle || topic.title}, Words: ${topic.words.length}`);
     return { topic, allWords: topic.words, userId, user };
 }
 

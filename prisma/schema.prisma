@@ -27,8 +27,8 @@ model User {
 
 model Topic {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  title       String
-  viTitle     String?
+  title       String?  // English title (optional)
+  viTitle     String   // Vietnamese title (required)
   slug        String   @unique
   description String?
   viDescription String?

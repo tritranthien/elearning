@@ -18,15 +18,17 @@ export async function action({ request }: Route.ActionArgs) {
 
     const title = formData.get("title") as string;
     const viTitle = formData.get("viTitle") as string;
-    const slug = (formData.get("slug") as string || title.toLowerCase().replace(/ /g, "-").replace(/[^\w-]+/g, "")).trim();
+    // Generate slug from viTitle or title
+    const baseSlug = viTitle || title;
+    const slug = (formData.get("slug") as string || baseSlug.toLowerCase().replace(/ /g, "-").replace(/[^\w-]+/g, "")).trim();
     const description = formData.get("description") as string;
     const viDescription = formData.get("viDescription") as string;
     const level = formData.get("level") as string;
     const image = formData.get("image") as string || "📚";
     const color = formData.get("color") as string || "from-blue-500 to-cyan-500";
 
-    if (!title || !slug || !level) {
-        return { error: "Vui lòng điền đầy đủ các thông tin bắt buộc (Tiêu đề, Slug, Cấp độ)." };
+    if (!viTitle || !level) {
+        return { error: "Vui lòng điền đầy đủ các thông tin bắt buộc (Tiêu đề tiếng Việt, Cấp độ)." };
     }
 
     try {
@@ -87,25 +89,25 @@ export default function TopicNew() {
                     )}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-                        {/* English Title */}
+                        {/* Vietnamese Title - Required */}
                         <div className="space-y-2">
-                            <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">Tiêu đề (English) *</label>
+                            <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">Tiêu đề (Tiếng Việt) *</label>
                             <input
-                                name="title"
+                                name="viTitle"
                                 type="text"
-                                placeholder="e.g. Daily Routine"
+                                placeholder="VD: Thói quen hàng ngày"
                                 required
                                 className="w-full px-5 py-3 md:px-6 md:py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-primary focus:bg-white outline-none transition-all font-bold text-gray-900 text-sm md:text-base"
                             />
                         </div>
 
-                        {/* Vietnamese Title */}
+                        {/* English Title - Optional */}
                         <div className="space-y-2">
-                            <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">Tiêu đề (Tiếng Việt)</label>
+                            <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">Tiêu đề (English) - Tùy chọn</label>
                             <input
-                                name="viTitle"
+                                name="title"
                                 type="text"
-                                placeholder="e.g. Thói quen hàng ngày"
+                                placeholder="e.g. Daily Routine"
                                 className="w-full px-5 py-3 md:px-6 md:py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-primary focus:bg-white outline-none transition-all font-bold text-gray-900 text-sm md:text-base"
                             />
                         </div>
